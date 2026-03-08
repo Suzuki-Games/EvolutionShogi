@@ -1,0 +1,263 @@
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+/// <summary>
+/// 主人公クラス。
+/// 進化（EXP）やリスポーンの概念など、主人公特有のロジックを持ちます。
+/// 現在の状態（Type）により移動可能なマスが変化します。
+/// </summary>
+public class HeroPiece : Piece
+{
+    [Header("Hero Specific Status")]
+    public int CurrentExp = 0;
+    
+    // リスポーンまでの残りターン数
+    public int RespawnTurnsLeft = 0;
+    
+    // 死亡状態かどうかのフラグ
+    public bool IsDead = false;
+
+    // TODO: 後ほど調整する進化用定数
+    private const int EXP_TO_SILVER = 2;
+    private const int EXP_TO_ROOK = 5;
+    private const int EXP_TO_HERO = 10;
+
+    /// <summary>
+    /// 前進時や駒を取った時に得られる経験値を敵陣に近いほどボーナス付与して処理します。
+    /// </summary>
+    /// <param name="baseAmount">基本となる経験値量（前進時は1、駒取得時は敵のExpValueなどを想定）</param>
+    /// <param name="targetPos">アクションを起こした（移動した）先の座標</param>
+    public void AddExp(int baseAmount, Vector2Int targetPos)
+    {
+        if (IsDead) return;
+
+        // 敵陣（盤面の奥）に近いほどボーナスを付与するロジック
+        // プレイヤー側を下から上へ(y: 0 -> 4)の進行と仮定
+        // y が 3 または 4 のエリアを敵陣（奥）とする
+        int bonusExp = 0;
+        if (targetPos.y >= 3)
+        {
+            bonusExp = (targetPos.y - 2); // y=3なら+1, y=4なら+2のボーナス
+        }
+
+        int totalExp = baseAmount + bonusExp;
+        
+        Debug.Log($"[HeroPiece] 経験値獲得: 基本={baseAmount}, ボーナス={bonusExp}, 合計={totalExp}");
+
+        CurrentExp += totalExp;
+        CheckEvolution();
+    }
+
+    /// <summary>
+    /// 経験値に基づいた動的な進化ロジック
+    /// </summary>
+    private void CheckEvolution()
+    {
+        if (CurrentExp >= EXP_TO_HERO)
+        {
+            Type = PieceType.Hero;
+        }
+        else if (CurrentExp >= EXP_TO_ROOK)
+        {
+            Type = PieceType.Rook;
+        }
+        else if (CurrentExp >= EXP_TO_SILVER)
+        {
+            Type = PieceType.Silver;
+        }
+    }
+
+    /// <summary>
+    /// 主人公が取られた時の特別ルール（リスポーン待機状態へ）
+    /// </summary>
+    public override void OnTaken()
+    {
+        IsDead = true;
+        RespawnTurnsLeft = 3; // 3ターン後に再出撃
+        gameObject.SetActive(false); // 盤面からは一旦消す
+    }
+
+    /// <summary>
+    /// ターン経過時に呼び出し、リスポーンカウントを減らします。
+    /// </summary>
+    public void DecrementRespawnTurn(BoardGrid boardGrid)
+    {
+        if (!IsDead) return;
+
+        RespawnTurnsLeft--;
+        if (RespawnTurnsLeft <= 0)
+        {
+            Respawn(boardGrid);
+        }
+    }
+
+    /// <summary>
+    /// 不屈の精神で復活（レベル1：歩に戻る）
+    /// </summary>
+    private void Respawn(BoardGrid boardGrid)
+    {
+        IsDead = false;
+        CurrentExp = 0; // 経験値リセット
+        Type = PieceType.Pawn; // 歩に戻る
+        
+        // 自陣最前列（y = 1 または y = 0）の空きマスを探して配置する
+        // プレイヤー側の下から上への進行(y=0が最後方)
+        Vector2Int spawnPos = new Vector2Int(-1, -1);
+        
+        // y=1（少し前）から探し、無理ならy=0（最後方）を探す
+        for (int y = 1; y >= 0; y--)
+        {
+            // x中心から左右へ探す
+            int[] xSearchOrder = { 2, 1, 3, 0, 4 };
+            foreach (int x in xSearchOrder)
+            {
+                if (boardGrid.GetPieceAt(new Vector2Int(x, y)) == null)
+                {
+                    spawnPos = new Vector2Int(x, y);
+                    break;
+                }
+            }
+            if (spawnPos.x != -1) break; // 見つかったら抜ける
+        }
+
+        if (spawnPos.x != -1)
+        {
+            boardGrid.PlacePiece(this, spawnPos);
+            // 本来はBoardViewの再配置も必要だが、テスト用の一環として位置もリセット
+            transform.position = new Vector3(spawnPos.x * 1.1f - 2.2f, spawnPos.y * 1.1f - 2.2f, 0); // 仮のワールド座標計算
+            gameObject.SetActive(true);
+            Debug.Log($"リスポーンしました: {spawnPos}");
+        }
+        else
+        {
+            Debug.LogWarning("リスポーン可能な空きマスが自陣にありません。");
+        }
+    }
+
+    /// <summary>
+    /// 進行度（PieceType）に応じて移動可能座標の計算を切り替えます。
+    /// </summary>
+    public override List<Vector2Int> GetAvailableMoves(Piece[,] board)
+    {
+        List<Vector2Int> moves = new List<Vector2Int>();
+
+        if (IsDead) return moves;
+
+        switch (Type)
+        {
+            case PieceType.Pawn:
+                moves = GetPawnMoves(board);
+                break;
+            case PieceType.Silver:
+                moves = GetSilverMoves(board);
+                break;
+            case PieceType.Rook:
+                moves = GetRookMoves(board);
+                break;
+            case PieceType.Hero:
+                moves = GetHeroMoves(board);
+                break;
+        }
+
+        return moves;
+    }
+
+    // --- 各形態ごとの移動ロジック ---
+    // ユーティリティ：指定座標が盤面内で、空きマスか敵なら追加する
+    private void AddMoveIfValid(Piece[,] board, List<Vector2Int> moves, Vector2Int nextPos)
+    {
+        if (BoardGrid.IsInsideBoard(nextPos))
+        {
+            Piece target = board[nextPos.x, nextPos.y];
+            // ターゲットが空、もしくは自分と違う陣営（敵）なら移動可能
+            if (target == null || target.IsEnemy != this.IsEnemy)
+            {
+                moves.Add(nextPos);
+            }
+        }
+    }
+
+    private List<Vector2Int> GetPawnMoves(Piece[,] board)
+    {
+        List<Vector2Int> moves = new List<Vector2Int>();
+        // 前方へ1マス（主人公は味がなのでy方向に+1）
+        AddMoveIfValid(board, moves, Position + new Vector2Int(0, 1));
+        return moves;
+    }
+
+    private List<Vector2Int> GetSilverMoves(Piece[,] board)
+    {
+        List<Vector2Int> moves = new List<Vector2Int>();
+        // 前方3方向＋斜め後方
+        AddMoveIfValid(board, moves, Position + new Vector2Int(0, 1));   // 前
+        AddMoveIfValid(board, moves, Position + new Vector2Int(-1, 1));  // 左前
+        AddMoveIfValid(board, moves, Position + new Vector2Int(1, 1));   // 右前
+        AddMoveIfValid(board, moves, Position + new Vector2Int(-1, -1)); // 左後
+        AddMoveIfValid(board, moves, Position + new Vector2Int(1, -1));  // 右後
+        return moves;
+    }
+
+    private List<Vector2Int> GetRookMoves(Piece[,] board)
+    {
+        List<Vector2Int> moves = new List<Vector2Int>();
+        // 縦横の直線移動（障害物に当たるまで）
+        Vector2Int[] directions = { new Vector2Int(0, 1), new Vector2Int(0, -1), new Vector2Int(1, 0), new Vector2Int(-1, 0) };
+
+        foreach (var dir in directions)
+        {
+            Vector2Int currentPos = Position + dir;
+            while (BoardGrid.IsInsideBoard(currentPos))
+            {
+                Piece target = board[currentPos.x, currentPos.y];
+                if (target == null)
+                {
+                    moves.Add(currentPos); // 空きマスなら進める
+                }
+                else
+                {
+                    if (target.IsEnemy != this.IsEnemy)
+                    {
+                        moves.Add(currentPos); // 敵ならそこまで進んで取れる
+                    }
+                    break; // 何らかの駒にぶつかったらその方向の探索は終了
+                }
+                currentPos += dir;
+            }
+        }
+        return moves;
+    }
+
+    private List<Vector2Int> GetHeroMoves(Piece[,] board)
+    {
+        List<Vector2Int> moves = new List<Vector2Int>();
+        // 勇者：全方向への移動（飛車＋角の動きに相当：クイーン）
+        Vector2Int[] directions = { 
+            new Vector2Int(0, 1), new Vector2Int(0, -1), new Vector2Int(1, 0), new Vector2Int(-1, 0),
+            new Vector2Int(1, 1), new Vector2Int(1, -1), new Vector2Int(-1, 1), new Vector2Int(-1, -1)
+        };
+
+        foreach (var dir in directions)
+        {
+            Vector2Int currentPos = Position + dir;
+            while (BoardGrid.IsInsideBoard(currentPos))
+            {
+                Piece target = board[currentPos.x, currentPos.y];
+                if (target == null)
+                {
+                    moves.Add(currentPos);
+                }
+                else
+                {
+                    if (target.IsEnemy != this.IsEnemy)
+                    {
+                        moves.Add(currentPos);
+                    }
+                    break;
+                }
+                currentPos += dir;
+            }
+        }
+        return moves;
+    }
+}
