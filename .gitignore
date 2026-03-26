@@ -3,9 +3,9 @@
 /[Oo]bj/
 /[Bb]uild/
 /[Bb]uilds/
-/[探]Logs/
-/[ユーザー名]UserSettings/
-/[暗]MemoryCaptures/
+/[Ll]ogs/
+/[Uu]serSettings/
+/[Mm]emoryCaptures/
 
 # Asset store packages
 /[Aa]ssets/AssetStoreTools*
@@ -23,3 +23,19 @@
 # OS generated files
 .DS_Store
 Thumbs.db
+
+# Personal secretary system
+.secretary/
+
+# 作業用スクリーンショット
+genzyou/
+
+# 使用しないWindowsシステムフォント
+Assets/YUGOTH*
+
+# 画像生成用の一時スクリプト
+Assets/gen_pieces*
+Assets/generate_pieces*
+
+# 使用しないフォントアセット
+Assets/Fonts/YUGOTHB*

@@ -54,6 +54,8 @@ public class HeroPiece : Piece
     /// </summary>
     private void CheckEvolution()
     {
+        PieceType oldType = Type;
+
         if (CurrentExp >= EXP_TO_HERO)
         {
             Type = PieceType.Hero;
@@ -66,6 +68,13 @@ public class HeroPiece : Piece
         {
             Type = PieceType.Silver;
         }
+
+        if (oldType != Type)
+        {
+            Debug.Log($"進化した！ {oldType} -> {Type}");
+        }
+
+        UpdateVisuals(); // 経験値や進化状態が変わったのでUI更新
     }
 
     /// <summary>
@@ -101,6 +110,8 @@ public class HeroPiece : Piece
         CurrentExp = 0; // 経験値リセット
         Type = PieceType.Pawn; // 歩に戻る
         
+        UpdateVisuals(); // リスポーンでレベル戻ったので更新
+
         // 自陣最前列（y = 1 または y = 0）の空きマスを探して配置する
         // プレイヤー側の下から上への進行(y=0が最後方)
         Vector2Int spawnPos = new Vector2Int(-1, -1);
@@ -259,5 +270,14 @@ public class HeroPiece : Piece
             }
         }
         return moves;
+    }
+
+    /// <summary>
+    /// 死亡中は墓石画像、それ以外は現在のTypeに対応した画像を返します。
+    /// </summary>
+    protected override string GetSpriteName()
+    {
+        if (IsDead) return "King_王"; // 仮：墓石画像がなければ王画像で代用
+        return base.GetSpriteName();
     }
 }

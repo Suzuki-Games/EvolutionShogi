@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using TMPro;
 
 /// <summary>
 /// 駒の種類を定義します。
@@ -53,6 +54,8 @@ public abstract class Piece : MonoBehaviour
         Type = type;
         IsEnemy = isEnemy;
         Position = startPos;
+        
+        UpdateVisuals();
     }
 
     /// <summary>
@@ -62,5 +65,46 @@ public abstract class Piece : MonoBehaviour
     {
         // デフォルトではオブジェクトを破棄または非表示にする
         gameObject.SetActive(false);
+    }
+
+    /// <summary>
+    /// 見た目の更新（色や画像）を行います。
+    /// </summary>
+    public virtual void UpdateVisuals()
+    {
+        SpriteRenderer sr = GetComponentInChildren<SpriteRenderer>();
+        if (sr != null)
+        {
+            // 味方は青系、敵は赤系に色付け
+            sr.color = IsEnemy ? new Color(0.8f, 0.4f, 0.4f) : new Color(0.4f, 0.6f, 1f);
+
+            // 駒種に対応した画像をResourcesから読み込んで適用
+            string spritePath = "PieceImages/" + GetSpriteName();
+            Sprite pieceSprite = Resources.Load<Sprite>(spritePath);
+            Debug.Log($"[Piece] Loading: {spritePath} → {(pieceSprite != null ? "成功" : "失敗(null)")}");
+            if (pieceSprite != null)
+            {
+                sr.sprite = pieceSprite;
+                sr.sortingOrder = 1; // 盤面タイルより前面に表示
+            }
+        }
+    }
+
+    /// <summary>
+    /// 駒の種類に対応するスプライトファイル名を返します。
+    /// </summary>
+    protected virtual string GetSpriteName()
+    {
+        switch (Type)
+        {
+            case PieceType.Pawn:   return "Pawn_歩";
+            case PieceType.Silver: return "Silver_銀";
+            case PieceType.Rook:   return "Rook_飛";
+            case PieceType.Hero:   return "Hero_勇";
+            case PieceType.King:   return "King_王";
+            case PieceType.Gold:   return "Gold_金";
+            case PieceType.Bishop: return "Bishop_角";
+            default: return "";
+        }
     }
 }

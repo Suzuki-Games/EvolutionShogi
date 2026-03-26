@@ -152,6 +152,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::BoardTile
   spriteRenderer: {fileID: 3342892474404717044}
-  normalColor: {r: 0.9811321, g: 0.67041737, b: 0.254539, a: 1}
+  normalColor: {r: 1, g: 0.7018583, b: 0.023584902, a: 1}
   highlightColor: {r: 0, g: 1, b: 0, a: 1}
   attackColor: {r: 1, g: 0, b: 0, a: 1}
