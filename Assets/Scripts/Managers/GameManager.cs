@@ -60,6 +60,17 @@ public class GameManager : MonoBehaviour
     /// </summary>
     public void StartGame()
     {
+        // 持ち駒をリセット
+        if (HandManager.Instance != null) HandManager.Instance.ClearAll();
+
+        // カメラを盤面中央に配置し、7×7盤面が収まるサイズに自動調整
+        if (Camera.main != null)
+        {
+            Camera.main.transform.position = new Vector3(0, 0, -10);
+            float boardWorldSize = Mathf.Max(BoardGrid.Width, BoardGrid.Height) * 1.1f;
+            Camera.main.orthographicSize = boardWorldSize / 2f + 0.5f;
+        }
+
         SetupInitialBoard();
     }
 
@@ -71,29 +82,32 @@ public class GameManager : MonoBehaviour
     {
         Debug.Log("GameManager: 初期配置をセットアップします（7×7）。");
 
-        // --- プレイヤー陣営の配置 (y=0: 後衛, y=1: 前衛) ---
-        SpawnPiece(playerKingPrefab, PieceType.King, false, new Vector2Int(2, 0));   // 王将
-        SpawnPiece(allyGoldPrefab, PieceType.Gold, false, new Vector2Int(0, 0));     // 金（左）
-        SpawnPiece(allyGoldPrefab, PieceType.Gold, false, new Vector2Int(4, 0));     // 金（右）
+        // --- プレイヤー陣営の配置 ---
+        // y=0: 後衛（王＋金×2で守り固め）
+        SpawnPiece(allyGoldPrefab, PieceType.Gold, false, new Vector2Int(1, 0));     // 金（左）
+        SpawnPiece(playerKingPrefab, PieceType.King, false, new Vector2Int(3, 0));   // 王将（中央）
+        SpawnPiece(allyGoldPrefab, PieceType.Gold, false, new Vector2Int(5, 0));     // 金（右）
 
-        SpawnPiece(allyPawnPrefab, PieceType.Pawn, false, new Vector2Int(0, 1));     // 歩（左）
-        HeroPiece hero = SpawnPiece(heroPrefab, PieceType.Pawn, false, new Vector2Int(2, 1)) as HeroPiece; // 勇者(歩)
+        // y=1: 前衛（勇者＋歩×2）
+        SpawnPiece(allyPawnPrefab, PieceType.Pawn, false, new Vector2Int(1, 1));     // 歩（左）
+        HeroPiece hero = SpawnPiece(heroPrefab, PieceType.Pawn, false, new Vector2Int(3, 1)) as HeroPiece; // 勇者(歩)
         turnManager.RegisterHero(hero);
         if (uiManager != null) uiManager.TrackHero(hero);
-        SpawnPiece(allyPawnPrefab, PieceType.Pawn, false, new Vector2Int(4, 1));     // 歩（右）
+        SpawnPiece(allyPawnPrefab, PieceType.Pawn, false, new Vector2Int(5, 1));     // 歩（右）
 
-        // --- 敵陣営の配置（チート級の初期配置） ---
-        // y=6: 強力な後衛
-        SpawnPiece(enemyRookPrefab, PieceType.Rook, true, new Vector2Int(0, 6));     // 飛車
+        // --- 敵陣営の配置（強力だが守備的配置） ---
+        // y=6: 後衛（飛車・角は王の隣で守備的 = 前線の歩が壁になる）
         SpawnPiece(enemyGoldPrefab, PieceType.Gold, true, new Vector2Int(1, 6));     // 金
-        SpawnPiece(enemyKingPrefab, PieceType.King, true, new Vector2Int(2, 6));     // 王将
-        SpawnPiece(enemyGoldPrefab, PieceType.Gold, true, new Vector2Int(3, 6));     // 金
-        SpawnPiece(enemyBishopPrefab, PieceType.Bishop, true, new Vector2Int(4, 6)); // 角
+        SpawnPiece(enemyRookPrefab, PieceType.Rook, true, new Vector2Int(2, 6));     // 飛車（王の左隣）
+        SpawnPiece(enemyKingPrefab, PieceType.King, true, new Vector2Int(3, 6));     // 王将（中央）
+        SpawnPiece(enemyBishopPrefab, PieceType.Bishop, true, new Vector2Int(4, 6)); // 角（王の右隣）
+        SpawnPiece(enemyGoldPrefab, PieceType.Gold, true, new Vector2Int(5, 6));     // 金
 
-        // y=5: 前衛（少数精鋭）
-        SpawnPiece(enemyPawnPrefab, PieceType.Pawn, true, new Vector2Int(1, 5));     // 歩
-        SpawnPiece(enemyPawnPrefab, PieceType.Pawn, true, new Vector2Int(2, 5));     // 銀の位置に歩（銀プレハブがないため）
-        SpawnPiece(enemyPawnPrefab, PieceType.Pawn, true, new Vector2Int(3, 5));     // 歩
+        // y=5: 歩の壁（5枚で飛車・角のラインを完全に塞ぐ）
+        for (int x = 1; x <= 5; x++)
+        {
+            SpawnPiece(enemyPawnPrefab, PieceType.Pawn, true, new Vector2Int(x, 5));
+        }
 
         // セットアップ完了後、プレイヤーのターンを開始する
         turnManager.SetState(GameState.PlayerTurn);

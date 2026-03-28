@@ -61,7 +61,14 @@ public class BoardGrid : MonoBehaviour
             {
                 expToGain = targetPiece.ExpValue;
             }
-            // グリッドからまず除去してからOnTakenを呼ぶ（OnTaken内でGameOver/Clearが走る場合の安全性）
+
+            // 持ち駒に追加（取った側の手持ちに入る）
+            if (HandManager.Instance != null)
+            {
+                HandManager.Instance.AddToHand(targetPiece.Type, piece.IsEnemy);
+            }
+
+            // グリッドからまず除去してからOnTakenを呼ぶ
             grid[targetPos.x, targetPos.y] = null;
             targetPiece.OnTaken();
         }

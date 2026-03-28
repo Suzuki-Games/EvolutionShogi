@@ -23,6 +23,8 @@ public class BoardView : MonoBehaviour
 
     private void Start()
     {
+        // BoardViewの位置を原点にリセットして盤面を確実に中央に配置
+        transform.position = Vector3.zero;
         GenerateBoardVisuals();
     }
 

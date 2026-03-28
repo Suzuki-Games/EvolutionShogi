@@ -2,7 +2,8 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
-using TMPro; // TextMeshProを使うために追加
+using UnityEngine.UI;
+using TMPro;
 
 /// <summary>
 /// ゲーム内のUI状態（タイトル、ゲーム中、リザルト）を管理します。
@@ -23,12 +24,31 @@ public class UIManager : MonoBehaviour
     [SerializeField] private TextMeshProUGUI formText;
     [SerializeField] private TextMeshProUGUI turnText;
 
+    [Header("Hand (持ち駒) UI")]
+    [SerializeField] private Transform handButtonContainer;
+    [SerializeField] private Button handButtonPrefab;
+    [SerializeField] private PlayerInputController playerInput;
+
     private HeroPiece trackedHero;
     private int turnCount = 0;
+    private List<Button> handButtons = new List<Button>();
 
     private void Start()
     {
         ShowTitleScreen();
+
+        if (HandManager.Instance != null)
+        {
+            HandManager.Instance.OnHandChanged += UpdateHandUI;
+        }
+    }
+
+    private void OnDestroy()
+    {
+        if (HandManager.Instance != null)
+        {
+            HandManager.Instance.OnHandChanged -= UpdateHandUI;
+        }
     }
 
     public void ShowTitleScreen()
@@ -131,6 +151,70 @@ public class UIManager : MonoBehaviour
             case PieceType.Silver: return "Rook";
             case PieceType.Rook: return "Hero";
             default: return null;
+        }
+    }
+
+    /// <summary>
+    /// 持ち駒UIを更新する（HandManagerのイベントから呼ばれる）
+    /// </summary>
+    private void UpdateHandUI()
+    {
+        // 既存ボタンをクリア
+        foreach (var btn in handButtons)
+        {
+            if (btn != null) Destroy(btn.gameObject);
+        }
+        handButtons.Clear();
+
+        if (handButtonContainer == null || handButtonPrefab == null || HandManager.Instance == null) return;
+
+        // 持ち駒を種類ごとにカウント
+        Dictionary<PieceType, int> handCount = new Dictionary<PieceType, int>();
+        foreach (var type in HandManager.Instance.PlayerHand)
+        {
+            if (handCount.ContainsKey(type))
+                handCount[type]++;
+            else
+                handCount[type] = 1;
+        }
+
+        // ボタンを生成
+        foreach (var kvp in handCount)
+        {
+            PieceType pieceType = kvp.Key;
+            int count = kvp.Value;
+
+            Button btn = Instantiate(handButtonPrefab, handButtonContainer);
+            btn.gameObject.SetActive(true);
+
+            TextMeshProUGUI btnText = btn.GetComponentInChildren<TextMeshProUGUI>();
+            if (btnText != null)
+            {
+                btnText.text = $"{GetPieceKanji(pieceType)} x{count}";
+            }
+
+            btn.onClick.AddListener(() =>
+            {
+                if (playerInput != null)
+                {
+                    playerInput.EnterDropMode(pieceType);
+                }
+            });
+
+            handButtons.Add(btn);
+        }
+    }
+
+    private string GetPieceKanji(PieceType type)
+    {
+        switch (type)
+        {
+            case PieceType.Pawn: return "歩";
+            case PieceType.Silver: return "銀";
+            case PieceType.Gold: return "金";
+            case PieceType.Rook: return "飛";
+            case PieceType.Bishop: return "角";
+            default: return type.ToString();
         }
     }
 

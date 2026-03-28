@@ -4,7 +4,7 @@ using UnityEngine;
 
 /// <summary>
 /// プレイヤーのマウス入力（タップ入力）を受け取り、
-/// 駒の選択や移動先マスの指定を制御します。
+/// 駒の選択や移動先マスの指定、持ち駒の打ち込みを制御します。
 /// </summary>
 public class PlayerInputController : MonoBehaviour
 {
@@ -13,12 +13,29 @@ public class PlayerInputController : MonoBehaviour
     [SerializeField] private TurnManager turnManager;
     [SerializeField] private UIManager uiManager;
 
-    private Piece selectedPiece; // 現在選択中の駒
+    [Header("Prefabs for Hand Drops")]
+    [SerializeField] private AllyPiece allyPawnPrefab;
+    [SerializeField] private AllyPiece allyGoldPrefab;
+    [SerializeField] private AllyPiece allySilverPrefab;
+    [SerializeField] private AllyPiece allyRookPrefab;
+    [SerializeField] private AllyPiece allyBishopPrefab;
+
+    private Piece selectedPiece;
     private List<Vector2Int> currentAvailableMoves = new List<Vector2Int>();
+
+    // 持ち駒の打ち込みモード
+    private bool isDropMode = false;
+    private PieceType dropPieceType;
+
+    private Camera mainCamera;
+
+    private void Start()
+    {
+        mainCamera = Camera.main;
+    }
 
     void Update()
     {
-        // 自分のターンでない場合は入力を受け付けない
         if (turnManager == null || turnManager.CurrentState != GameState.PlayerTurn)
             return;
 
@@ -26,19 +43,21 @@ public class PlayerInputController : MonoBehaviour
         {
             HandleClick();
         }
+
+        // 右クリックで選択解除
+        if (Input.GetMouseButtonDown(1))
+        {
+            CancelSelection();
+        }
     }
 
     private void HandleClick()
     {
-        // マウス座標からワールドの2D座標へ変換
-        Vector2 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
-        
-        // Raycastでクリックしたオブジェクト（Collider2Dを持つもの）を取得
+        Vector2 mousePos = mainCamera.ScreenToWorldPoint(Input.mousePosition);
         RaycastHit2D hit = Physics2D.Raycast(mousePos, Vector2.zero);
 
         if (hit.collider != null)
         {
-            // まず盤面のタイルをクリックしたか判定
             BoardTile clickedTile = hit.collider.GetComponent<BoardTile>();
             if (clickedTile != null)
             {
@@ -46,7 +65,6 @@ public class PlayerInputController : MonoBehaviour
                 return;
             }
 
-            // 次に駒を直接クリックしたか判定
             Piece clickedPiece = hit.collider.GetComponent<Piece>();
             if (clickedPiece != null)
             {
@@ -58,28 +76,37 @@ public class PlayerInputController : MonoBehaviour
 
     private void OnPieceClicked(Piece piece)
     {
-        // 味方の駒であれば選択する
+        if (isDropMode)
+        {
+            // 打ち込みモード中に駒がある場所をクリック→キャンセル
+            CancelSelection();
+            return;
+        }
+
         if (!piece.IsEnemy)
         {
             SelectPiece(piece);
         }
         else if (selectedPiece != null)
         {
-            // すでに味方の駒を選択中で、敵の駒をクリックした場合は、攻撃（移動）の判定に渡す
             TryMoveTo(piece.Position);
         }
     }
 
     private void OnTileClicked(BoardTile tile)
     {
-        // すでに駒を選択済みの状態でタイル（空きマス）をクリックした場合、移動の判定に渡す
+        if (isDropMode)
+        {
+            TryDropPiece(tile.GridPosition);
+            return;
+        }
+
         if (selectedPiece != null)
         {
             TryMoveTo(tile.GridPosition);
         }
         else
         {
-            // 駒が選択されていない場合はそのタイル上に味方駒があるか探して選択する
             Piece pieceOnTile = boardGrid.GetPieceAt(tile.GridPosition);
             if (pieceOnTile != null && !pieceOnTile.IsEnemy)
             {
@@ -90,39 +117,148 @@ public class PlayerInputController : MonoBehaviour
 
     private void SelectPiece(Piece piece)
     {
+        isDropMode = false;
         selectedPiece = piece;
-        
-        // 選択した駒の移動可能範囲を取得
         currentAvailableMoves = selectedPiece.GetAvailableMoves(boardGrid.GetGrid());
-        
-        // BoardViewにハイライトを依頼
+
         if (boardView != null)
         {
             boardView.HighlightMoves(currentAvailableMoves);
         }
-        
+
         Debug.Log($"駒を選択しました: {piece.name} at {piece.Position}");
+    }
+
+    /// <summary>
+    /// UIManagerから呼ばれる：持ち駒を選択して打ち込みモードに入る
+    /// </summary>
+    public void EnterDropMode(PieceType type)
+    {
+        selectedPiece = null;
+        isDropMode = true;
+        dropPieceType = type;
+
+        // 全空きマスをハイライト（二歩チェック付き）
+        currentAvailableMoves = GetValidDropPositions(type);
+        if (boardView != null)
+        {
+            boardView.HighlightMoves(currentAvailableMoves);
+        }
+
+        Debug.Log($"持ち駒モード: {type} を打つ場所を選んでください");
+    }
+
+    /// <summary>
+    /// 持ち駒を打てる位置を取得する
+    /// </summary>
+    private List<Vector2Int> GetValidDropPositions(PieceType type)
+    {
+        List<Vector2Int> positions = new List<Vector2Int>();
+
+        for (int x = 0; x < BoardGrid.Width; x++)
+        {
+            // 歩の二歩チェック: 同じ列に味方の歩がいたらその列には打てない
+            if (type == PieceType.Pawn)
+            {
+                bool hasPawnInColumn = false;
+                for (int checkY = 0; checkY < BoardGrid.Height; checkY++)
+                {
+                    Piece p = boardGrid.GetPieceAt(new Vector2Int(x, checkY));
+                    if (p != null && !p.IsEnemy && p.Type == PieceType.Pawn && !(p is HeroPiece))
+                    {
+                        hasPawnInColumn = true;
+                        break;
+                    }
+                }
+                if (hasPawnInColumn) continue;
+            }
+
+            for (int y = 0; y < BoardGrid.Height; y++)
+            {
+                // 歩は最奥段（y=6）には打てない（動けなくなるため）
+                if (type == PieceType.Pawn && y == BoardGrid.Height - 1) continue;
+
+                Vector2Int pos = new Vector2Int(x, y);
+                if (boardGrid.GetPieceAt(pos) == null)
+                {
+                    positions.Add(pos);
+                }
+            }
+        }
+
+        return positions;
+    }
+
+    private void TryDropPiece(Vector2Int targetPos)
+    {
+        if (!currentAvailableMoves.Contains(targetPos))
+        {
+            CancelSelection();
+            return;
+        }
+
+        // HandManagerから持ち駒を消費
+        if (HandManager.Instance == null || !HandManager.Instance.UseFromHand(dropPieceType, false))
+        {
+            CancelSelection();
+            return;
+        }
+
+        // プレハブから味方駒を生成して盤面に配置
+        AllyPiece prefab = GetAllyPrefabForType(dropPieceType);
+        if (prefab != null)
+        {
+            AllyPiece newPiece = Instantiate(prefab);
+            newPiece.Initialize(dropPieceType, false, targetPos);
+            boardGrid.PlacePiece(newPiece, targetPos);
+
+            if (boardView != null)
+            {
+                newPiece.transform.position = boardView.GetWorldPositionFromGrid(targetPos);
+                newPiece.transform.SetParent(boardView.transform);
+            }
+
+            // SE再生
+            if (AudioManager.Instance != null) AudioManager.Instance.PlayMove();
+        }
+
+        // 選択解除してターン終了
+        boardView.ClearAllHighlights();
+        isDropMode = false;
+        selectedPiece = null;
+        currentAvailableMoves.Clear();
+
+        if (uiManager != null) uiManager.RefreshHeroHUD();
+        turnManager.EndPlayerTurn();
+    }
+
+    private AllyPiece GetAllyPrefabForType(PieceType type)
+    {
+        switch (type)
+        {
+            case PieceType.Pawn: return allyPawnPrefab;
+            case PieceType.Gold: return allyGoldPrefab;
+            case PieceType.Silver: return allySilverPrefab;
+            case PieceType.Rook: return allyRookPrefab;
+            case PieceType.Bishop: return allyBishopPrefab;
+            default: return allyPawnPrefab;
+        }
     }
 
     private void TryMoveTo(Vector2Int targetPos)
     {
-        // クリックした座標が移動可能リストに含まれているか確認
         if (currentAvailableMoves.Contains(targetPos))
         {
             Piece movingPiece = selectedPiece;
 
-            // ロジック更新
             boardGrid.MovePiece(movingPiece, targetPos);
 
-            // EXP/進化UIの即時更新（ターンカウントは増やさない）
             if (uiManager != null) uiManager.RefreshHeroHUD();
 
-            // ハイライトを消去して選択解除
             boardView.ClearAllHighlights();
             selectedPiece = null;
             currentAvailableMoves.Clear();
 
-            // アニメーション付き移動 → 完了後にターン切り替え
             Vector3 worldTargetPos = boardView.GetWorldPositionFromGrid(targetPos);
             if (PieceMover.Instance != null)
             {
@@ -139,11 +275,15 @@ public class PlayerInputController : MonoBehaviour
         }
         else
         {
-            // 移動できないマスを選んだ場合は選択をキャンセルする
-            boardView.ClearAllHighlights();
-            selectedPiece = null;
-            currentAvailableMoves.Clear();
-            Debug.Log("移動可能範囲外です。選択を解除しました。");
+            CancelSelection();
         }
+    }
+
+    private void CancelSelection()
+    {
+        boardView.ClearAllHighlights();
+        selectedPiece = null;
+        isDropMode = false;
+        currentAvailableMoves.Clear();
     }
 }
