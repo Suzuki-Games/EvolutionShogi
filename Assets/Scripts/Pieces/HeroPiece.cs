@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using System;
 using UnityEngine;
 
 /// <summary>
@@ -18,10 +19,15 @@ public class HeroPiece : Piece
     // 死亡状態かどうかのフラグ
     public bool IsDead = false;
 
-    // TODO: 後ほど調整する進化用定数
     private const int EXP_TO_SILVER = 2;
     private const int EXP_TO_ROOK = 5;
     private const int EXP_TO_HERO = 10;
+
+    /// <summary>
+    /// 進化発生時に外部から演出処理をフックするためのイベント。
+    /// (PieceType oldType, PieceType newType, Vector2Int position, int shockwaveKills)
+    /// </summary>
+    public event Action<PieceType, PieceType, Vector2Int, int> OnEvolved;
 
     /// <summary>
     /// 前進時や駒を取った時に得られる経験値を敵陣に近いほどボーナス付与して処理します。
@@ -73,9 +79,92 @@ public class HeroPiece : Piece
         {
             Debug.Log($"進化した！ {oldType} -> {Type}");
             if (AudioManager.Instance != null) AudioManager.Instance.PlayEvolve();
+
+            // 進化衝撃波を発動
+            int kills = ExecuteShockwave(oldType, Type);
+
+            // 外部に進化イベントを通知（演出用）
+            OnEvolved?.Invoke(oldType, Type, Position, kills);
         }
 
-        UpdateVisuals(); // 経験値や進化状態が変わったのでUI更新
+        UpdateVisuals();
+    }
+
+    /// <summary>
+    /// 進化衝撃波：進化段階に応じて周囲の敵を除去する
+    /// </summary>
+    private int ExecuteShockwave(PieceType oldType, PieceType newType)
+    {
+        BoardGrid boardGrid = FindAnyObjectByType<BoardGrid>();
+        if (boardGrid == null) return 0;
+
+        List<Vector2Int> affectedPositions = new List<Vector2Int>();
+
+        if (newType == PieceType.Silver)
+        {
+            // 歩→銀: 周囲1マスの敵を除去
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                for (int dy = -1; dy <= 1; dy++)
+                {
+                    if (dx == 0 && dy == 0) continue;
+                    affectedPositions.Add(Position + new Vector2Int(dx, dy));
+                }
+            }
+        }
+        else if (newType == PieceType.Rook)
+        {
+            // 銀→飛: 十字方向2マスの敵を除去
+            Vector2Int[] dirs = { Vector2Int.up, Vector2Int.down, Vector2Int.left, Vector2Int.right };
+            foreach (var dir in dirs)
+            {
+                for (int dist = 1; dist <= 2; dist++)
+                {
+                    affectedPositions.Add(Position + dir * dist);
+                }
+            }
+        }
+        else if (newType == PieceType.Hero)
+        {
+            // 飛→勇者: 全方向2マスの敵を除去
+            for (int dx = -2; dx <= 2; dx++)
+            {
+                for (int dy = -2; dy <= 2; dy++)
+                {
+                    if (dx == 0 && dy == 0) continue;
+                    affectedPositions.Add(Position + new Vector2Int(dx, dy));
+                }
+            }
+        }
+
+        // 対象マスの敵駒を除去
+        int killCount = 0;
+        foreach (var pos in affectedPositions)
+        {
+            if (!BoardGrid.IsInsideBoard(pos)) continue;
+            Piece target = boardGrid.GetPieceAt(pos);
+            if (target != null && target.IsEnemy)
+            {
+                Debug.Log($"[衝撃波] {target.Type} at {pos} を除去！");
+
+                // 持ち駒に追加
+                if (HandManager.Instance != null)
+                {
+                    HandManager.Instance.AddToHand(target.Type, false);
+                }
+
+                boardGrid.RemovePieceAt(pos);
+                target.OnTaken();
+                killCount++;
+            }
+        }
+
+        if (killCount > 0)
+        {
+            Debug.Log($"[衝撃波] {killCount}体の敵を吹き飛ばした！");
+        }
+
+        return killCount;
     }
 
     /// <summary>

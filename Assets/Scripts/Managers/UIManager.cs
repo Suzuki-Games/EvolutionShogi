@@ -29,6 +29,10 @@ public class UIManager : MonoBehaviour
     [SerializeField] private Button handButtonPrefab;
     [SerializeField] private PlayerInputController playerInput;
 
+    [Header("Evolution Effect")]
+    [SerializeField] private TextMeshProUGUI evolutionAnnouncementText;
+    [SerializeField] private Image screenFlashImage;
+
     private HeroPiece trackedHero;
     private int turnCount = 0;
     private List<Button> handButtons = new List<Button>();
@@ -56,6 +60,7 @@ public class UIManager : MonoBehaviour
         titlePanel.SetActive(true);
         gamePanel.SetActive(false);
         resultPanel.SetActive(false);
+        SetHUDVisible(false);
     }
 
     public void OnClickGameStart()
@@ -64,8 +69,16 @@ public class UIManager : MonoBehaviour
         gamePanel.SetActive(true);
         resultPanel.SetActive(false);
         turnCount = 0;
+        SetHUDVisible(true);
 
         GameManager.Instance.StartGame();
+    }
+
+    private void SetHUDVisible(bool visible)
+    {
+        if (expText != null) expText.gameObject.SetActive(visible);
+        if (formText != null) formText.gameObject.SetActive(visible);
+        if (turnText != null) turnText.gameObject.SetActive(visible);
     }
 
     /// <summary>
@@ -187,10 +200,21 @@ public class UIManager : MonoBehaviour
             Button btn = Instantiate(handButtonPrefab, handButtonContainer);
             btn.gameObject.SetActive(true);
 
+            // 駒画像をResourcesから読み込んでボタンに表示
+            string spriteName = GetSpriteNameForType(pieceType);
+            Sprite pieceSprite = Resources.Load<Sprite>("PieceImages/" + spriteName);
+            Image btnImage = btn.GetComponent<Image>();
+            if (btnImage != null && pieceSprite != null)
+            {
+                btnImage.sprite = pieceSprite;
+                btnImage.color = new Color(0.4f, 0.6f, 1f); // 味方色（青系）
+            }
+
+            // テキストで個数を表示
             TextMeshProUGUI btnText = btn.GetComponentInChildren<TextMeshProUGUI>();
             if (btnText != null)
             {
-                btnText.text = $"{GetPieceKanji(pieceType)} x{count}";
+                btnText.text = count > 1 ? $"x{count}" : "";
             }
 
             btn.onClick.AddListener(() =>
@@ -205,17 +229,77 @@ public class UIManager : MonoBehaviour
         }
     }
 
-    private string GetPieceKanji(PieceType type)
+    private string GetSpriteNameForType(PieceType type)
     {
         switch (type)
         {
-            case PieceType.Pawn: return "歩";
-            case PieceType.Silver: return "銀";
-            case PieceType.Gold: return "金";
-            case PieceType.Rook: return "飛";
-            case PieceType.Bishop: return "角";
-            default: return type.ToString();
+            case PieceType.Pawn: return "Pawn_歩";
+            case PieceType.Silver: return "Silver_銀";
+            case PieceType.Gold: return "Gold_金";
+            case PieceType.Rook: return "Rook_飛";
+            case PieceType.Bishop: return "Bishop_角";
+            case PieceType.Hero: return "Hero_勇";
+            case PieceType.King: return "King_王";
+            default: return "";
         }
+    }
+
+    /// <summary>
+    /// 進化演出を表示する（HeroPiece.OnEvolvedから呼ばれる）
+    /// </summary>
+    public void ShowEvolutionEffect(PieceType oldType, PieceType newType, int kills)
+    {
+        StartCoroutine(EvolutionEffectCoroutine(oldType, newType, kills));
+    }
+
+    private IEnumerator EvolutionEffectCoroutine(PieceType oldType, PieceType newType, int kills)
+    {
+        string oldName = GetFormDisplayName(oldType);
+        string newName = GetFormDisplayName(newType);
+
+        // 画面フラッシュ
+        if (screenFlashImage != null)
+        {
+            // 勇者進化は金色、それ以外は白
+            Color flashColor = (newType == PieceType.Hero)
+                ? new Color(1f, 0.85f, 0.2f, 0.8f)
+                : new Color(1f, 1f, 1f, 0.6f);
+            screenFlashImage.color = flashColor;
+            screenFlashImage.gameObject.SetActive(true);
+        }
+
+        // アナウンステキスト
+        if (evolutionAnnouncementText != null)
+        {
+            string killText = kills > 0 ? $"\n{kills}体の敵を吹き飛ばした！" : "";
+            evolutionAnnouncementText.text = $"進 化 ！\n{oldName} → {newName}{killText}";
+            evolutionAnnouncementText.gameObject.SetActive(true);
+        }
+
+        // フラッシュのフェードアウト
+        float duration = (newType == PieceType.Hero) ? 1.5f : 1.0f;
+        float elapsed = 0f;
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float t = elapsed / duration;
+
+            if (screenFlashImage != null)
+            {
+                Color c = screenFlashImage.color;
+                c.a = Mathf.Lerp(0.8f, 0f, t);
+                screenFlashImage.color = c;
+            }
+
+            yield return null;
+        }
+
+        // クリーンアップ
+        if (screenFlashImage != null) screenFlashImage.gameObject.SetActive(false);
+        if (evolutionAnnouncementText != null) evolutionAnnouncementText.gameObject.SetActive(false);
+
+        // HUD更新
+        UpdateHeroHUD();
     }
 
     public void ShowGameClear()

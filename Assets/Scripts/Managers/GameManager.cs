@@ -92,7 +92,14 @@ public class GameManager : MonoBehaviour
         SpawnPiece(allyPawnPrefab, PieceType.Pawn, false, new Vector2Int(1, 1));     // 歩（左）
         HeroPiece hero = SpawnPiece(heroPrefab, PieceType.Pawn, false, new Vector2Int(3, 1)) as HeroPiece; // 勇者(歩)
         turnManager.RegisterHero(hero);
-        if (uiManager != null) uiManager.TrackHero(hero);
+        if (uiManager != null)
+        {
+            uiManager.TrackHero(hero);
+            hero.OnEvolved += (oldType, newType, pos, kills) =>
+            {
+                uiManager.ShowEvolutionEffect(oldType, newType, kills);
+            };
+        }
         SpawnPiece(allyPawnPrefab, PieceType.Pawn, false, new Vector2Int(5, 1));     // 歩（右）
 
         // --- 敵陣営の配置（強力だが守備的配置） ---
