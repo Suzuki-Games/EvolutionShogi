@@ -56,9 +56,45 @@ public class AllyPiece : Piece
                 AddMoveIfValid(board, moves, Position + new Vector2Int(-1, -1));
                 AddMoveIfValid(board, moves, Position + new Vector2Int(1, -1));
                 break;
+
+            case PieceType.Rook:
+                // 飛車：縦横の直線移動
+                AddLineMoves(board, moves, new Vector2Int(0, 1));
+                AddLineMoves(board, moves, new Vector2Int(0, -1));
+                AddLineMoves(board, moves, new Vector2Int(1, 0));
+                AddLineMoves(board, moves, new Vector2Int(-1, 0));
+                break;
+
+            case PieceType.Bishop:
+                // 角：斜め方向の直線移動
+                AddLineMoves(board, moves, new Vector2Int(1, 1));
+                AddLineMoves(board, moves, new Vector2Int(1, -1));
+                AddLineMoves(board, moves, new Vector2Int(-1, 1));
+                AddLineMoves(board, moves, new Vector2Int(-1, -1));
+                break;
         }
 
         return moves;
+    }
+
+    private void AddLineMoves(Piece[,] board, List<Vector2Int> moves, Vector2Int dir)
+    {
+        Vector2Int current = Position + dir;
+        while (BoardGrid.IsInsideBoard(current))
+        {
+            Piece target = board[current.x, current.y];
+            if (target == null)
+            {
+                moves.Add(current);
+            }
+            else
+            {
+                if (target.IsEnemy != this.IsEnemy)
+                    moves.Add(current);
+                break;
+            }
+            current += dir;
+        }
     }
 
     private void AddMoveIfValid(Piece[,] board, List<Vector2Int> moves, Vector2Int nextPos)

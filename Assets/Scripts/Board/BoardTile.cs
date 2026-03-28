@@ -14,7 +14,6 @@ public class BoardTile : MonoBehaviour
     [SerializeField] private Color normalColor = Color.white;
     [SerializeField] private Color highlightColor = Color.green;
     [SerializeField] private Color attackColor = Color.red;
-    [SerializeField] private Color shockwaveColor = new Color(1f, 0.6f, 0f); // 衝撃波（オレンジ）
 
     private void Awake()
     {
@@ -28,33 +27,13 @@ public class BoardTile : MonoBehaviour
         ResetHighlight();
     }
 
-    /// <summary>
-    /// マスを通常状態に戻す
-    /// </summary>
     public void ResetHighlight()
     {
         spriteRenderer.color = normalColor;
     }
 
-    /// <summary>
-    /// メリハリをつけるため、移動可能なマスや敵がいるマスを光らせる
-    /// </summary>
     public void SetHighlight(bool isAttackable)
     {
         spriteRenderer.color = isAttackable ? attackColor : highlightColor;
-    }
-
-    /// <summary>
-    /// 衝撃波の範囲をオレンジ色でハイライト
-    /// </summary>
-    public void SetShockwaveHighlight()
-    {
-        spriteRenderer.color = shockwaveColor;
-    }
-
-    // デバッグ時用の描画補助
-    private void OnMouseEnter()
-    {
-        // TODO: マウスホバー時の簡易表示
     }
 }

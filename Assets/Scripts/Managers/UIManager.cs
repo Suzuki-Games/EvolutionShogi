@@ -31,7 +31,6 @@ public class UIManager : MonoBehaviour
 
     [Header("Evolution Effect")]
     [SerializeField] private TextMeshProUGUI evolutionAnnouncementText;
-    [SerializeField] private Image screenFlashImage;
 
     private HeroPiece trackedHero;
     private int turnCount = 0;
@@ -41,10 +40,33 @@ public class UIManager : MonoBehaviour
     {
         ShowTitleScreen();
 
+        // HandContainerのLayoutGroupをGridLayoutGroupに切り替える（1回だけ）
+        SetupHandContainerLayout();
+
         if (HandManager.Instance != null)
         {
             HandManager.Instance.OnHandChanged += UpdateHandUI;
         }
+    }
+
+    /// <summary>
+    /// HandContainerのLayoutGroupをGridLayoutGroupに初期設定する
+    /// </summary>
+    private void SetupHandContainerLayout()
+    {
+        if (handButtonContainer == null) return;
+
+        // 既存のLayoutGroup（HorizontalLayoutGroup等）があれば即時削除
+        foreach (var lg in handButtonContainer.GetComponents<LayoutGroup>())
+        {
+            DestroyImmediate(lg);
+        }
+
+        GridLayoutGroup grid = handButtonContainer.gameObject.AddComponent<GridLayoutGroup>();
+        grid.cellSize = new Vector2(55, 55);
+        grid.spacing = new Vector2(4, 4);
+        grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
+        grid.constraintCount = 1; // 縦1列に並べる
     }
 
     private void OnDestroy()
@@ -61,6 +83,8 @@ public class UIManager : MonoBehaviour
         gamePanel.SetActive(false);
         resultPanel.SetActive(false);
         SetHUDVisible(false);
+
+        if (evolutionAnnouncementText != null) evolutionAnnouncementText.gameObject.SetActive(false);
     }
 
     public void OnClickGameStart()
@@ -181,18 +205,6 @@ public class UIManager : MonoBehaviour
 
         if (handButtonContainer == null || handButtonPrefab == null || HandManager.Instance == null) return;
 
-        // Layout Groupがない場合は追加（ボタンが重ならないように）
-        HorizontalLayoutGroup layout = handButtonContainer.GetComponent<HorizontalLayoutGroup>();
-        if (layout == null)
-        {
-            layout = handButtonContainer.gameObject.AddComponent<HorizontalLayoutGroup>();
-        }
-        layout.spacing = 10;
-        layout.childForceExpandWidth = false;
-        layout.childForceExpandHeight = false;
-        layout.childControlWidth = false;
-        layout.childControlHeight = false;
-
         // 持ち駒を種類ごとにカウント
         Dictionary<PieceType, int> handCount = new Dictionary<PieceType, int>();
         foreach (var type in HandManager.Instance.PlayerHand)
@@ -212,30 +224,30 @@ public class UIManager : MonoBehaviour
             Button btn = Instantiate(handButtonPrefab, handButtonContainer);
             btn.gameObject.SetActive(true);
 
-            // ボタンサイズを固定（デブくならないように）
-            RectTransform btnRect = btn.GetComponent<RectTransform>();
-            if (btnRect != null)
-            {
-                btnRect.sizeDelta = new Vector2(80, 80);
-            }
-
             // 駒画像をResourcesから読み込んでボタンに表示
             string spriteName = GetSpriteNameForType(pieceType);
-            Sprite pieceSprite = Resources.Load<Sprite>("PieceImages/" + spriteName);
+            string spritePath = "PieceImages/" + spriteName;
+            Sprite pieceSprite = Resources.Load<Sprite>(spritePath);
+            if (pieceSprite == null)
+            {
+                Sprite[] sprites = Resources.LoadAll<Sprite>(spritePath);
+                if (sprites != null && sprites.Length > 0) pieceSprite = sprites[0];
+            }
             Image btnImage = btn.GetComponent<Image>();
             if (btnImage != null && pieceSprite != null)
             {
                 btnImage.sprite = pieceSprite;
                 btnImage.color = new Color(0.4f, 0.6f, 1f);
-                btnImage.preserveAspect = true; // アスペクト比を維持
+                btnImage.preserveAspect = true;
             }
 
             // テキストで個数を表示
             TextMeshProUGUI btnText = btn.GetComponentInChildren<TextMeshProUGUI>();
             if (btnText != null)
             {
-                btnText.text = count > 1 ? $"x{count}" : "";
-                btnText.fontSize = 20;
+                btnText.text = $"x{count}";
+                btnText.fontSize = 18;
+                btnText.alignment = TextAlignmentOptions.BottomRight;
             }
 
             btn.onClick.AddListener(() =>
@@ -268,55 +280,26 @@ public class UIManager : MonoBehaviour
     /// <summary>
     /// 進化演出を表示する（HeroPiece.OnEvolvedから呼ばれる）
     /// </summary>
-    public void ShowEvolutionEffect(PieceType oldType, PieceType newType, int kills)
+    public void ShowEvolutionEffect(PieceType oldType, PieceType newType)
     {
-        StartCoroutine(EvolutionEffectCoroutine(oldType, newType, kills));
+        StartCoroutine(EvolutionEffectCoroutine(oldType, newType));
     }
 
-    private IEnumerator EvolutionEffectCoroutine(PieceType oldType, PieceType newType, int kills)
+    private IEnumerator EvolutionEffectCoroutine(PieceType oldType, PieceType newType)
     {
         string oldName = GetFormDisplayName(oldType);
         string newName = GetFormDisplayName(newType);
 
-        // 画面フラッシュ
-        if (screenFlashImage != null)
-        {
-            // 勇者進化は金色、それ以外は白
-            Color flashColor = (newType == PieceType.Hero)
-                ? new Color(1f, 0.85f, 0.2f, 0.8f)
-                : new Color(1f, 1f, 1f, 0.6f);
-            screenFlashImage.color = flashColor;
-            screenFlashImage.gameObject.SetActive(true);
-        }
-
         // アナウンステキスト
         if (evolutionAnnouncementText != null)
         {
-            string killText = kills > 0 ? $"\n{kills} KILLS!" : "";
-            evolutionAnnouncementText.text = $"EVOLUTION!\n{oldName} >> {newName}{killText}";
+            evolutionAnnouncementText.text = $"EVOLUTION!\n{oldName} >> {newName}";
             evolutionAnnouncementText.gameObject.SetActive(true);
         }
 
-        // フラッシュのフェードアウト
-        float duration = (newType == PieceType.Hero) ? 1.5f : 1.0f;
-        float elapsed = 0f;
-        while (elapsed < duration)
-        {
-            elapsed += Time.deltaTime;
-            float t = elapsed / duration;
-
-            if (screenFlashImage != null)
-            {
-                Color c = screenFlashImage.color;
-                c.a = Mathf.Lerp(0.8f, 0f, t);
-                screenFlashImage.color = c;
-            }
-
-            yield return null;
-        }
+        yield return new WaitForSeconds(1.5f);
 
         // クリーンアップ
-        if (screenFlashImage != null) screenFlashImage.gameObject.SetActive(false);
         if (evolutionAnnouncementText != null) evolutionAnnouncementText.gameObject.SetActive(false);
 
         // HUD更新

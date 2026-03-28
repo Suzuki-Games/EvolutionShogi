@@ -78,12 +78,6 @@ public class BoardGrid : MonoBehaviour
             expToGain = 1;
         }
 
-        // 経験値の付与実行（HeroPiece側で奥へ進むほどのボーナス計算を行う）
-        if (isHeroMoving && expToGain > 0)
-        {
-            hero.AddExp(expToGain, targetPos);
-        }
-
         // SE再生
         if (AudioManager.Instance != null)
         {
@@ -93,11 +87,15 @@ public class BoardGrid : MonoBehaviour
                 AudioManager.Instance.PlayMove();
         }
 
-        // 元の位置を空（null）にする
+        // 先に位置を更新する（衝撃波が移動後の位置を中心に発動するため）
         grid[piece.Position.x, piece.Position.y] = null;
-
-        // 新しい位置に配置する
         PlacePiece(piece, targetPos);
+
+        // 経験値の付与実行（進化・衝撃波は移動後の位置から発動）
+        if (isHeroMoving && expToGain > 0)
+        {
+            hero.AddExp(expToGain, targetPos);
+        }
     }
 
     /// <summary>

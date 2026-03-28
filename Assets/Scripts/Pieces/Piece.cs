@@ -1,7 +1,5 @@
-using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using TMPro;
 
 /// <summary>
 /// 駒の種類を定義します。
@@ -81,7 +79,17 @@ public abstract class Piece : MonoBehaviour
             // 駒種に対応した画像をResourcesから読み込んで適用
             string spritePath = "PieceImages/" + GetSpriteName();
             Sprite pieceSprite = Resources.Load<Sprite>(spritePath);
-            Debug.Log($"[Piece] Loading: {spritePath} → {(pieceSprite != null ? "成功" : "失敗(null)")}");
+
+            // spriteMode: Multiple の場合、Load<Sprite>はnullを返すのでLoadAllで取得
+            if (pieceSprite == null)
+            {
+                Sprite[] sprites = Resources.LoadAll<Sprite>(spritePath);
+                if (sprites != null && sprites.Length > 0)
+                {
+                    pieceSprite = sprites[0];
+                }
+            }
+
             if (pieceSprite != null)
             {
                 sr.sprite = pieceSprite;

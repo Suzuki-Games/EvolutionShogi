@@ -234,15 +234,17 @@ public class PlayerInputController : MonoBehaviour
 
     private AllyPiece GetAllyPrefabForType(PieceType type)
     {
+        AllyPiece prefab = null;
         switch (type)
         {
-            case PieceType.Pawn: return allyPawnPrefab;
-            case PieceType.Gold: return allyGoldPrefab;
-            case PieceType.Silver: return allySilverPrefab;
-            case PieceType.Rook: return allyRookPrefab;
-            case PieceType.Bishop: return allyBishopPrefab;
-            default: return allyPawnPrefab;
+            case PieceType.Pawn: prefab = allyPawnPrefab; break;
+            case PieceType.Gold: prefab = allyGoldPrefab; break;
+            case PieceType.Silver: prefab = allySilverPrefab; break;
+            case PieceType.Rook: prefab = allyRookPrefab; break;
+            case PieceType.Bishop: prefab = allyBishopPrefab; break;
         }
+        // プレハブが未アサインの場合、allyPawnPrefabを代用（Initialize()で正しいTypeが設定される）
+        return prefab != null ? prefab : allyPawnPrefab;
     }
 
     private void TryMoveTo(Vector2Int targetPos)

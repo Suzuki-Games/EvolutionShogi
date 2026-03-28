@@ -95,26 +95,33 @@ public class GameManager : MonoBehaviour
         if (uiManager != null)
         {
             uiManager.TrackHero(hero);
-            hero.OnEvolved += (oldType, newType, pos, kills) =>
+            hero.OnEvolved += (oldType, newType) =>
             {
-                uiManager.ShowEvolutionEffect(oldType, newType, kills);
+                uiManager.ShowEvolutionEffect(oldType, newType);
             };
         }
         SpawnPiece(allyPawnPrefab, PieceType.Pawn, false, new Vector2Int(5, 1));     // 歩（右）
 
-        // --- 敵陣営の配置（強力だが守備的配置） ---
-        // y=6: 後衛（飛車・角は王の隣で守備的 = 前線の歩が壁になる）
+        // --- 敵陣営の配置（3層の防衛ライン） ---
+        // y=6: 本陣（王将を飛車・角・金で囲む）
+        SpawnPiece(enemyPawnPrefab, PieceType.Pawn, true, new Vector2Int(0, 6));     // 歩（左端）
         SpawnPiece(enemyGoldPrefab, PieceType.Gold, true, new Vector2Int(1, 6));     // 金
-        SpawnPiece(enemyRookPrefab, PieceType.Rook, true, new Vector2Int(2, 6));     // 飛車（王の左隣）
+        SpawnPiece(enemyRookPrefab, PieceType.Rook, true, new Vector2Int(2, 6));     // 飛車
         SpawnPiece(enemyKingPrefab, PieceType.King, true, new Vector2Int(3, 6));     // 王将（中央）
-        SpawnPiece(enemyBishopPrefab, PieceType.Bishop, true, new Vector2Int(4, 6)); // 角（王の右隣）
+        SpawnPiece(enemyBishopPrefab, PieceType.Bishop, true, new Vector2Int(4, 6)); // 角
         SpawnPiece(enemyGoldPrefab, PieceType.Gold, true, new Vector2Int(5, 6));     // 金
+        SpawnPiece(enemyPawnPrefab, PieceType.Pawn, true, new Vector2Int(6, 6));     // 歩（右端）
 
-        // y=5: 歩の壁（5枚で飛車・角のラインを完全に塞ぐ）
-        for (int x = 1; x <= 5; x++)
+        // y=5: 第2防衛ライン（歩の壁 — 全幅）
+        for (int x = 0; x < BoardGrid.Width; x++)
         {
             SpawnPiece(enemyPawnPrefab, PieceType.Pawn, true, new Vector2Int(x, 5));
         }
+
+        // y=4: 前線部隊（歩×3 — 中央を前に押し出す）
+        SpawnPiece(enemyPawnPrefab, PieceType.Pawn, true, new Vector2Int(2, 4));
+        SpawnPiece(enemyPawnPrefab, PieceType.Pawn, true, new Vector2Int(3, 4));
+        SpawnPiece(enemyPawnPrefab, PieceType.Pawn, true, new Vector2Int(4, 4));
 
         // セットアップ完了後、プレイヤーのターンを開始する
         turnManager.SetState(GameState.PlayerTurn);
