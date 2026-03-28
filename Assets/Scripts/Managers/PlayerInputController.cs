@@ -11,6 +11,7 @@ public class PlayerInputController : MonoBehaviour
     [SerializeField] private BoardGrid boardGrid;
     [SerializeField] private BoardView boardView;
     [SerializeField] private TurnManager turnManager;
+    [SerializeField] private UIManager uiManager;
 
     private Piece selectedPiece; // 現在選択中の駒
     private List<Vector2Int> currentAvailableMoves = new List<Vector2Int>();
@@ -108,20 +109,33 @@ public class PlayerInputController : MonoBehaviour
         // クリックした座標が移動可能リストに含まれているか確認
         if (currentAvailableMoves.Contains(targetPos))
         {
-            // 実際のロジック（配列やEXP処理）の更新
-            boardGrid.MovePiece(selectedPiece, targetPos);
-            
-            // ビジュアル（位置）の更新
-            Vector3 worldTargetPos = boardView.GetWorldPositionFromGrid(targetPos);
-            selectedPiece.transform.position = worldTargetPos;
-            
+            Piece movingPiece = selectedPiece;
+
+            // ロジック更新
+            boardGrid.MovePiece(movingPiece, targetPos);
+
+            // EXP/進化UIの即時更新（ターンカウントは増やさない）
+            if (uiManager != null) uiManager.RefreshHeroHUD();
+
             // ハイライトを消去して選択解除
             boardView.ClearAllHighlights();
             selectedPiece = null;
             currentAvailableMoves.Clear();
 
-            // ターンを終了し、敵のターンへ移行する
-            turnManager.EndPlayerTurn();
+            // アニメーション付き移動 → 完了後にターン切り替え
+            Vector3 worldTargetPos = boardView.GetWorldPositionFromGrid(targetPos);
+            if (PieceMover.Instance != null)
+            {
+                PieceMover.Instance.AnimateMove(movingPiece.transform, worldTargetPos, () =>
+                {
+                    turnManager.EndPlayerTurn();
+                });
+            }
+            else
+            {
+                movingPiece.transform.position = worldTargetPos;
+                turnManager.EndPlayerTurn();
+            }
         }
         else
         {

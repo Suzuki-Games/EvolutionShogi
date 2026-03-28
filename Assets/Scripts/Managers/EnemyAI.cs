@@ -23,63 +23,48 @@ public class EnemyAI : MonoBehaviour
 
         EnemyPiece bestPiece = null;
         Vector2Int bestMove = Vector2Int.zero;
-        bool canAttack = false;
+        int bestScore = int.MinValue;
 
-        // 1. 全ての敵駒の全移動可能マスを調べ、プレイヤーの駒を攻撃できる手を探す
+        // 全敵駒の全手を評価し、最もスコアの高い手を選ぶ
         foreach (var enemy in enemies)
         {
-            if (!enemy.gameObject.activeSelf) continue; // 取られた駒はスキップ
+            if (!enemy.gameObject.activeSelf) continue;
 
             var moves = enemy.GetAvailableMoves(boardGrid.GetGrid());
             foreach (var move in moves)
             {
-                Piece target = boardGrid.GetPieceAt(move);
-                // 移動先にプレイヤー（Hero）がいる場合
-                if (target != null && !target.IsEnemy)
+                int score = EvaluateMove(enemy, move);
+                // 同スコアならランダムに入れ替え（単調な動きを防ぐ）
+                if (score > bestScore || (score == bestScore && Random.value > 0.5f))
                 {
+                    bestScore = score;
                     bestPiece = enemy;
                     bestMove = move;
-                    canAttack = true;
-                    break;
                 }
-            }
-            if (canAttack) break;
-        }
-
-        // 2. 攻撃可能な手が無ければ、ランダムに動かせる駒とマスを選ぶ
-        if (!canAttack)
-        {
-            List<EnemyPiece> movableEnemies = new List<EnemyPiece>();
-            foreach (var enemy in enemies)
-            {
-                if (enemy.gameObject.activeSelf && enemy.GetAvailableMoves(boardGrid.GetGrid()).Count > 0)
-                {
-                    movableEnemies.Add(enemy);
-                }
-            }
-
-            if (movableEnemies.Count > 0)
-            {
-                // ランダムな駒を選択
-                bestPiece = movableEnemies[Random.Range(0, movableEnemies.Count)];
-                var moves = bestPiece.GetAvailableMoves(boardGrid.GetGrid());
-                // ランダムな移動先を選択
-                bestMove = moves[Random.Range(0, moves.Count)];
             }
         }
 
         // 3. 実際の移動処理
         if (bestPiece != null)
         {
-            Debug.Log($"[EnemyAI] {bestPiece.Type} が {bestMove} へ移動します。 (Attack: {canAttack})");
-            
+            bool isAttack = boardGrid.GetPieceAt(bestMove) != null;
+            Debug.Log($"[EnemyAI] {bestPiece.Type} が {bestMove} へ移動します。 (Attack: {isAttack})");
+
             boardGrid.MovePiece(bestPiece, bestMove);
-            
+
             if (boardView != null)
             {
                 Vector3 worldTargetPos = boardView.GetWorldPositionFromGrid(bestMove);
-                // TODO: DOTweenなどで滑らかに移動させるのがベストだが、ここでは瞬間移動
-                bestPiece.transform.position = worldTargetPos;
+                if (PieceMover.Instance != null)
+                {
+                    bool animDone = false;
+                    PieceMover.Instance.AnimateMove(bestPiece.transform, worldTargetPos, () => animDone = true);
+                    yield return new WaitUntil(() => animDone);
+                }
+                else
+                {
+                    bestPiece.transform.position = worldTargetPos;
+                }
             }
         }
         else
@@ -87,7 +72,38 @@ public class EnemyAI : MonoBehaviour
             Debug.Log("[EnemyAI] 動かせる駒がありませんでした。パスします。");
         }
 
-        yield return new WaitForSeconds(0.5f); // 移動後待機演出
+        yield return new WaitForSeconds(0.3f);
         onTurnFinished?.Invoke();
+    }
+
+    /// <summary>
+    /// 手のスコアを評価する。高いほど良い手。
+    /// </summary>
+    private int EvaluateMove(EnemyPiece enemy, Vector2Int move)
+    {
+        int score = 0;
+        Piece target = boardGrid.GetPieceAt(move);
+
+        if (target != null && !target.IsEnemy)
+        {
+            // 駒取りボーナス（高価値ほど高スコア）
+            if (target is KingPiece)
+                score += 10000; // 王を取れるなら最優先
+            else if (target is HeroPiece)
+                score += 500;   // 勇者を倒すと相手の成長を止められる
+            else
+                score += target.ExpValue * 100;
+        }
+
+        // 前進ボーナス（プレイヤー側へ進む = y が小さい方向）
+        int advance = enemy.Position.y - move.y;
+        if (advance > 0) score += advance * 5;
+
+        // 中央寄りボーナス（盤面制圧）
+        int centerX = BoardGrid.Width / 2;
+        int distFromCenter = Mathf.Abs(move.x - centerX);
+        score += (3 - distFromCenter);
+
+        return score;
     }
 }

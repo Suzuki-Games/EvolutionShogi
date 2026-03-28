@@ -43,6 +43,16 @@ public class EnemyPiece : Piece
     }
 
     /// <summary>
+    /// 敵駒が取られた時、TurnManagerから登録解除する
+    /// </summary>
+    public override void OnTaken()
+    {
+        TurnManager tm = FindAnyObjectByType<TurnManager>();
+        if (tm != null) tm.UnregisterEnemy(this);
+        base.OnTaken();
+    }
+
+    /// <summary>
     /// 全敵駒共通の移動アルゴリズム（仮）
     /// 将来的にはAI専用の `GetAvailableMoves` へと拡張予定。
     /// </summary>
@@ -70,19 +80,19 @@ public class EnemyPiece : Piece
                 break;
 
             case PieceType.Rook:
-                // 飛車：縦横（簡易的に1マスだけとしているが、本来はループで端まで）
-                AddMoveIfValid(board, moves, Position + new Vector2Int(0, -1));
-                AddMoveIfValid(board, moves, Position + new Vector2Int(0, 1));
-                AddMoveIfValid(board, moves, Position + new Vector2Int(1, 0));
-                AddMoveIfValid(board, moves, Position + new Vector2Int(-1, 0));
+                // 飛車：縦横フル射程
+                AddLineMoves(board, moves, new Vector2Int(0, -1));
+                AddLineMoves(board, moves, new Vector2Int(0, 1));
+                AddLineMoves(board, moves, new Vector2Int(1, 0));
+                AddLineMoves(board, moves, new Vector2Int(-1, 0));
                 break;
-                
+
             case PieceType.Bishop:
-                // 角行：斜め（簡易的に1マスで実装中）
-                AddMoveIfValid(board, moves, Position + new Vector2Int(1, 1));
-                AddMoveIfValid(board, moves, Position + new Vector2Int(1, -1));
-                AddMoveIfValid(board, moves, Position + new Vector2Int(-1, 1));
-                AddMoveIfValid(board, moves, Position + new Vector2Int(-1, -1));
+                // 角行：斜めフル射程
+                AddLineMoves(board, moves, new Vector2Int(1, 1));
+                AddLineMoves(board, moves, new Vector2Int(1, -1));
+                AddLineMoves(board, moves, new Vector2Int(-1, 1));
+                AddLineMoves(board, moves, new Vector2Int(-1, -1));
                 break;
 
             case PieceType.King:
@@ -106,11 +116,35 @@ public class EnemyPiece : Piece
         if (BoardGrid.IsInsideBoard(nextPos))
         {
             Piece target = board[nextPos.x, nextPos.y];
-            // 空きマス、またはプレイヤーの駒（Enemyではない）なら移動可能
             if (target == null || target.IsEnemy == false)
             {
                 moves.Add(nextPos);
             }
+        }
+    }
+
+    /// <summary>
+    /// 指定方向に障害物に当たるまで直線移動（飛車・角用）
+    /// </summary>
+    private void AddLineMoves(Piece[,] board, List<Vector2Int> moves, Vector2Int dir)
+    {
+        Vector2Int currentPos = Position + dir;
+        while (BoardGrid.IsInsideBoard(currentPos))
+        {
+            Piece target = board[currentPos.x, currentPos.y];
+            if (target == null)
+            {
+                moves.Add(currentPos);
+            }
+            else
+            {
+                if (target.IsEnemy == false)
+                {
+                    moves.Add(currentPos); // プレイヤー駒なら取れる
+                }
+                break;
+            }
+            currentPos += dir;
         }
     }
 }

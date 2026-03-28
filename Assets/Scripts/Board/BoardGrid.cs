@@ -8,9 +8,9 @@ using UnityEngine;
 /// </summary>
 public class BoardGrid : MonoBehaviour
 {
-    // 盤面サイズ：ミニ将棋の5x5
-    public const int Width = 5;
-    public const int Height = 5;
+    // 盤面サイズ：7x7
+    public const int Width = 7;
+    public const int Height = 7;
 
     // 5x5の盤面を管理する2次元配列 (nullなら駒なし)
     private Piece[,] grid = new Piece[Width, Height];
@@ -51,20 +51,23 @@ public class BoardGrid : MonoBehaviour
         int expToGain = 0;
         bool isHeroMoving = (hero != null && !hero.IsEnemy);
 
-        // 移動先に敵駒があれば、その駒の OnTaken() を呼ぶ
+        // 移動先に敵駒があれば、その駒を取る
         Piece targetPiece = GetPieceAt(targetPos);
+        bool isCapture = false;
         if (targetPiece != null && targetPiece.IsEnemy != piece.IsEnemy)
         {
+            isCapture = true;
             if (isHeroMoving)
             {
-                // 敵の駒を取った場合、その駒に設定されたExpValueを獲得
                 expToGain = targetPiece.ExpValue;
             }
+            // グリッドからまず除去してからOnTakenを呼ぶ（OnTaken内でGameOver/Clearが走る場合の安全性）
+            grid[targetPos.x, targetPos.y] = null;
             targetPiece.OnTaken();
         }
-        else if (isHeroMoving && targetPiece == null)
+        else if (isHeroMoving && targetPiece == null && targetPos.y > piece.Position.y)
         {
-            // 空きマスへの前進行動は基本EXP1とする
+            // 空きマスへの前進行動のみEXP1を付与
             expToGain = 1;
         }
 
@@ -72,6 +75,15 @@ public class BoardGrid : MonoBehaviour
         if (isHeroMoving && expToGain > 0)
         {
             hero.AddExp(expToGain, targetPos);
+        }
+
+        // SE再生
+        if (AudioManager.Instance != null)
+        {
+            if (isCapture)
+                AudioManager.Instance.PlayCapture();
+            else
+                AudioManager.Instance.PlayMove();
         }
 
         // 元の位置を空（null）にする

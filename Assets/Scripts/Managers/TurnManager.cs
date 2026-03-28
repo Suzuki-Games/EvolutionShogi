@@ -25,17 +25,17 @@ public class TurnManager : MonoBehaviour
     private HeroPiece heroPiece;
     private List<EnemyPiece> enemyPieces = new List<EnemyPiece>();
 
-    // TODO: 実際のUnityシーン構築時に Inspector からアサインするか動的探索するか調整
     [SerializeField] private BoardGrid boardGrid;
+    [SerializeField] private BoardView boardView;
     [SerializeField] private EnemyAI enemyAI;
+    [SerializeField] private UIManager uiManager;
 
     public event Action OnPlayerTurnStarted;
     public event Action OnEnemyTurnStarted;
 
     private void Start()
     {
-        // とりあえずプレイヤーのターンから開始する
-        SetState(GameState.PlayerTurn);
+        // GameManager.StartGame() から SetState が呼ばれるまで待機
     }
 
     /// <summary>
@@ -65,13 +65,13 @@ public class TurnManager : MonoBehaviour
     private void HandlePlayerTurnStart()
     {
         Debug.Log("--- プレイヤーのターン ---");
-        
+
         if (heroPiece != null && heroPiece.IsDead)
         {
-            // 主人公がやられているなら待機カウントを減らす
-            heroPiece.DecrementRespawnTurn(boardGrid);
+            heroPiece.DecrementRespawnTurn(boardGrid, boardView);
         }
 
+        if (uiManager != null) uiManager.OnNewPlayerTurn();
         OnPlayerTurnStarted?.Invoke();
         
         // （本来ならここでUIでの入力を待ちます）

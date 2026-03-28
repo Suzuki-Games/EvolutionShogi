@@ -33,12 +33,12 @@ public class HeroPiece : Piece
         if (IsDead) return;
 
         // 敵陣（盤面の奥）に近いほどボーナスを付与するロジック
-        // プレイヤー側を下から上へ(y: 0 -> 4)の進行と仮定
-        // y が 3 または 4 のエリアを敵陣（奥）とする
+        // プレイヤー側を下から上へ(y: 0 -> 6)の進行と仮定
+        // y が 5 または 6 のエリアを敵陣（奥）とする
         int bonusExp = 0;
-        if (targetPos.y >= 3)
+        if (targetPos.y >= 5)
         {
-            bonusExp = (targetPos.y - 2); // y=3なら+1, y=4なら+2のボーナス
+            bonusExp = (targetPos.y - 4); // y=5なら+1, y=6なら+2のボーナス
         }
 
         int totalExp = baseAmount + bonusExp;
@@ -72,6 +72,7 @@ public class HeroPiece : Piece
         if (oldType != Type)
         {
             Debug.Log($"進化した！ {oldType} -> {Type}");
+            if (AudioManager.Instance != null) AudioManager.Instance.PlayEvolve();
         }
 
         UpdateVisuals(); // 経験値や進化状態が変わったのでUI更新
@@ -90,21 +91,21 @@ public class HeroPiece : Piece
     /// <summary>
     /// ターン経過時に呼び出し、リスポーンカウントを減らします。
     /// </summary>
-    public void DecrementRespawnTurn(BoardGrid boardGrid)
+    public void DecrementRespawnTurn(BoardGrid boardGrid, BoardView boardView = null)
     {
         if (!IsDead) return;
 
         RespawnTurnsLeft--;
         if (RespawnTurnsLeft <= 0)
         {
-            Respawn(boardGrid);
+            Respawn(boardGrid, boardView);
         }
     }
 
     /// <summary>
     /// 不屈の精神で復活（レベル1：歩に戻る）
     /// </summary>
-    private void Respawn(BoardGrid boardGrid)
+    private void Respawn(BoardGrid boardGrid, BoardView boardView)
     {
         IsDead = false;
         CurrentExp = 0; // 経験値リセット
@@ -113,14 +114,20 @@ public class HeroPiece : Piece
         UpdateVisuals(); // リスポーンでレベル戻ったので更新
 
         // 自陣最前列（y = 1 または y = 0）の空きマスを探して配置する
-        // プレイヤー側の下から上への進行(y=0が最後方)
         Vector2Int spawnPos = new Vector2Int(-1, -1);
-        
+
         // y=1（少し前）から探し、無理ならy=0（最後方）を探す
         for (int y = 1; y >= 0; y--)
         {
-            // x中心から左右へ探す
-            int[] xSearchOrder = { 2, 1, 3, 0, 4 };
+            // x中心から左右へ探す（7×7盤面）
+            int center = BoardGrid.Width / 2;
+            List<int> xSearchOrder = new List<int> { center };
+            for (int offset = 1; offset <= center; offset++)
+            {
+                if (center - offset >= 0) xSearchOrder.Add(center - offset);
+                if (center + offset < BoardGrid.Width) xSearchOrder.Add(center + offset);
+            }
+
             foreach (int x in xSearchOrder)
             {
                 if (boardGrid.GetPieceAt(new Vector2Int(x, y)) == null)
@@ -129,15 +136,20 @@ public class HeroPiece : Piece
                     break;
                 }
             }
-            if (spawnPos.x != -1) break; // 見つかったら抜ける
+            if (spawnPos.x != -1) break;
         }
 
         if (spawnPos.x != -1)
         {
             boardGrid.PlacePiece(this, spawnPos);
-            // 本来はBoardViewの再配置も必要だが、テスト用の一環として位置もリセット
-            transform.position = new Vector3(spawnPos.x * 1.1f - 2.2f, spawnPos.y * 1.1f - 2.2f, 0); // 仮のワールド座標計算
             gameObject.SetActive(true);
+
+            // ビジュアル位置を更新
+            if (boardView != null)
+            {
+                transform.position = boardView.GetWorldPositionFromGrid(spawnPos);
+            }
+
             Debug.Log($"リスポーンしました: {spawnPos}");
         }
         else

@@ -18,9 +18,13 @@ public class GameManager : MonoBehaviour
     [SerializeField] private EnemyAI enemyAI;
     [SerializeField] private UIManager uiManager;
 
-    [Header("Piece Prefabs (Assign in Inspector)")]
+    [Header("Player Piece Prefabs")]
     [SerializeField] private HeroPiece heroPrefab;
     [SerializeField] private KingPiece playerKingPrefab;
+    [SerializeField] private AllyPiece allyGoldPrefab;
+    [SerializeField] private AllyPiece allyPawnPrefab;
+
+    [Header("Enemy Piece Prefabs")]
     [SerializeField] private KingPiece enemyKingPrefab;
     [SerializeField] private EnemyPiece enemyPawnPrefab;
     [SerializeField] private EnemyPiece enemyGoldPrefab;
@@ -60,38 +64,36 @@ public class GameManager : MonoBehaviour
     }
 
     /// <summary>
-    /// 非対称な初期配陣をセットアップします。
-    /// 敵は強力な駒が並び、自陣は王と歩のみ。
+    /// 非対称な初期配陣をセットアップします（7×7盤面）。
+    /// 敵は強力な駒が並び、自陣は王・勇者(歩)・歩×2・金×2の弱いスタート。
     /// </summary>
     private void SetupInitialBoard()
     {
-        Debug.Log("GameManager: 初期配置をセットアップします。");
+        Debug.Log("GameManager: 初期配置をセットアップします（7×7）。");
 
-        // --- プレイヤー陣営営の配置 ---
-        // 自陣王将（下段中央: 2, 0）
-        SpawnPiece(playerKingPrefab, PieceType.King, false, new Vector2Int(2, 0));
-        
-        // 主人公「歩」（王の前: 2, 1）
-        HeroPiece hero = SpawnPiece(heroPrefab, PieceType.Pawn, false, new Vector2Int(2, 1)) as HeroPiece;
+        // --- プレイヤー陣営の配置 (y=0: 後衛, y=1: 前衛) ---
+        SpawnPiece(playerKingPrefab, PieceType.King, false, new Vector2Int(2, 0));   // 王将
+        SpawnPiece(allyGoldPrefab, PieceType.Gold, false, new Vector2Int(0, 0));     // 金（左）
+        SpawnPiece(allyGoldPrefab, PieceType.Gold, false, new Vector2Int(4, 0));     // 金（右）
+
+        SpawnPiece(allyPawnPrefab, PieceType.Pawn, false, new Vector2Int(0, 1));     // 歩（左）
+        HeroPiece hero = SpawnPiece(heroPrefab, PieceType.Pawn, false, new Vector2Int(2, 1)) as HeroPiece; // 勇者(歩)
         turnManager.RegisterHero(hero);
-
+        if (uiManager != null) uiManager.TrackHero(hero);
+        SpawnPiece(allyPawnPrefab, PieceType.Pawn, false, new Vector2Int(4, 1));     // 歩（右）
 
         // --- 敵陣営の配置（チート級の初期配置） ---
-        // 敵王将（上段中央: 2, 4）
-        SpawnPiece(enemyKingPrefab, PieceType.King, true, new Vector2Int(2, 4));
+        // y=6: 強力な後衛
+        SpawnPiece(enemyRookPrefab, PieceType.Rook, true, new Vector2Int(0, 6));     // 飛車
+        SpawnPiece(enemyGoldPrefab, PieceType.Gold, true, new Vector2Int(1, 6));     // 金
+        SpawnPiece(enemyKingPrefab, PieceType.King, true, new Vector2Int(2, 6));     // 王将
+        SpawnPiece(enemyGoldPrefab, PieceType.Gold, true, new Vector2Int(3, 6));     // 金
+        SpawnPiece(enemyBishopPrefab, PieceType.Bishop, true, new Vector2Int(4, 6)); // 角
 
-        // 敵の強駒（y = 3, y = 4のラインに配置）
-        SpawnPiece(enemyRookPrefab, PieceType.Rook, true, new Vector2Int(0, 4));   // 左奥：飛車
-        SpawnPiece(enemyBishopPrefab, PieceType.Bishop, true, new Vector2Int(4, 4));// 右奥：角
-        SpawnPiece(enemyGoldPrefab, PieceType.Gold, true, new Vector2Int(1, 3));   // 敵王の守り：金
-        SpawnPiece(enemyGoldPrefab, PieceType.Gold, true, new Vector2Int(3, 3));   // 敵王の守り：金
-
-        // 敵の歩（最前線 y = 2）
-        SpawnPiece(enemyPawnPrefab, PieceType.Pawn, true, new Vector2Int(0, 2));
-        SpawnPiece(enemyPawnPrefab, PieceType.Pawn, true, new Vector2Int(1, 2));
-        SpawnPiece(enemyPawnPrefab, PieceType.Pawn, true, new Vector2Int(2, 2));
-        SpawnPiece(enemyPawnPrefab, PieceType.Pawn, true, new Vector2Int(3, 2));
-        SpawnPiece(enemyPawnPrefab, PieceType.Pawn, true, new Vector2Int(4, 2));
+        // y=5: 前衛（少数精鋭）
+        SpawnPiece(enemyPawnPrefab, PieceType.Pawn, true, new Vector2Int(1, 5));     // 歩
+        SpawnPiece(enemyPawnPrefab, PieceType.Pawn, true, new Vector2Int(2, 5));     // 銀の位置に歩（銀プレハブがないため）
+        SpawnPiece(enemyPawnPrefab, PieceType.Pawn, true, new Vector2Int(3, 5));     // 歩
 
         // セットアップ完了後、プレイヤーのターンを開始する
         turnManager.SetState(GameState.PlayerTurn);
@@ -137,7 +139,8 @@ public class GameManager : MonoBehaviour
     {
         Debug.Log("<color=yellow>GameManager: 敵の王将を討ち取りました！ GAME CLEAR!!</color>");
         turnManager.SetState(GameState.GameOver);
-        
+        if (AudioManager.Instance != null) AudioManager.Instance.PlayGameClear();
+
         if (uiManager != null)
         {
             uiManager.ShowGameClear();
@@ -151,7 +154,8 @@ public class GameManager : MonoBehaviour
     {
         Debug.Log("<color=red>GameManager: 味方の王将が討ち取られました... GAME OVER</color>");
         turnManager.SetState(GameState.GameOver);
-        
+        if (AudioManager.Instance != null) AudioManager.Instance.PlayGameOver();
+
         if (uiManager != null)
         {
             uiManager.ShowGameOver();
