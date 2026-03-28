@@ -137,6 +137,14 @@ public class HeroPiece : Piece
             }
         }
 
+        // 衝撃波の範囲をタイルにオレンジ色で表示
+        BoardView boardView = FindAnyObjectByType<BoardView>();
+        if (boardView != null)
+        {
+            float duration = (newType == PieceType.Hero) ? 1.5f : 1.0f;
+            boardView.ShowShockwaveEffect(affectedPositions, duration);
+        }
+
         // 対象マスの敵駒を除去
         int killCount = 0;
         foreach (var pos in affectedPositions)
@@ -145,7 +153,7 @@ public class HeroPiece : Piece
             Piece target = boardGrid.GetPieceAt(pos);
             if (target != null && target.IsEnemy)
             {
-                Debug.Log($"[衝撃波] {target.Type} at {pos} を除去！");
+                Debug.Log($"[Shockwave] {target.Type} at {pos} eliminated!");
 
                 // 持ち駒に追加
                 if (HandManager.Instance != null)

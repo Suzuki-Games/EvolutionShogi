@@ -89,6 +89,33 @@ public class BoardView : MonoBehaviour
     }
 
     /// <summary>
+    /// 衝撃波の範囲をオレンジ色でハイライトし、一定時間後に自動クリアする
+    /// </summary>
+    public void ShowShockwaveEffect(List<Vector2Int> positions, float duration = 1.0f)
+    {
+        foreach (var pos in positions)
+        {
+            if (BoardGrid.IsInsideBoard(pos))
+            {
+                tiles[pos.x, pos.y].SetShockwaveHighlight();
+            }
+        }
+        StartCoroutine(ClearShockwaveAfterDelay(positions, duration));
+    }
+
+    private IEnumerator ClearShockwaveAfterDelay(List<Vector2Int> positions, float delay)
+    {
+        yield return new WaitForSeconds(delay);
+        foreach (var pos in positions)
+        {
+            if (BoardGrid.IsInsideBoard(pos))
+            {
+                tiles[pos.x, pos.y].ResetHighlight();
+            }
+        }
+    }
+
+    /// <summary>
     /// グリッド座標を実際のワールド座標に変換して返します（駒を動かす先として使用）
     /// </summary>
     public Vector3 GetWorldPositionFromGrid(Vector2Int gridPos)

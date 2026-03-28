@@ -11,9 +11,10 @@ public class BoardTile : MonoBehaviour
     public Vector2Int GridPosition { get; private set; }
 
     [SerializeField] private SpriteRenderer spriteRenderer;
-    [SerializeField] private Color normalColor = Color.white;       // 通常の色
-    [SerializeField] private Color highlightColor = Color.green;    // 移動可能なマスの色
-    [SerializeField] private Color attackColor = Color.red;         // 敵がいるマスの色
+    [SerializeField] private Color normalColor = Color.white;
+    [SerializeField] private Color highlightColor = Color.green;
+    [SerializeField] private Color attackColor = Color.red;
+    [SerializeField] private Color shockwaveColor = new Color(1f, 0.6f, 0f); // 衝撃波（オレンジ）
 
     private void Awake()
     {
@@ -41,6 +42,14 @@ public class BoardTile : MonoBehaviour
     public void SetHighlight(bool isAttackable)
     {
         spriteRenderer.color = isAttackable ? attackColor : highlightColor;
+    }
+
+    /// <summary>
+    /// 衝撃波の範囲をオレンジ色でハイライト
+    /// </summary>
+    public void SetShockwaveHighlight()
+    {
+        spriteRenderer.color = shockwaveColor;
     }
 
     // デバッグ時用の描画補助

@@ -181,6 +181,18 @@ public class UIManager : MonoBehaviour
 
         if (handButtonContainer == null || handButtonPrefab == null || HandManager.Instance == null) return;
 
+        // Layout Groupがない場合は追加（ボタンが重ならないように）
+        HorizontalLayoutGroup layout = handButtonContainer.GetComponent<HorizontalLayoutGroup>();
+        if (layout == null)
+        {
+            layout = handButtonContainer.gameObject.AddComponent<HorizontalLayoutGroup>();
+        }
+        layout.spacing = 10;
+        layout.childForceExpandWidth = false;
+        layout.childForceExpandHeight = false;
+        layout.childControlWidth = false;
+        layout.childControlHeight = false;
+
         // 持ち駒を種類ごとにカウント
         Dictionary<PieceType, int> handCount = new Dictionary<PieceType, int>();
         foreach (var type in HandManager.Instance.PlayerHand)
@@ -200,6 +212,13 @@ public class UIManager : MonoBehaviour
             Button btn = Instantiate(handButtonPrefab, handButtonContainer);
             btn.gameObject.SetActive(true);
 
+            // ボタンサイズを固定（デブくならないように）
+            RectTransform btnRect = btn.GetComponent<RectTransform>();
+            if (btnRect != null)
+            {
+                btnRect.sizeDelta = new Vector2(80, 80);
+            }
+
             // 駒画像をResourcesから読み込んでボタンに表示
             string spriteName = GetSpriteNameForType(pieceType);
             Sprite pieceSprite = Resources.Load<Sprite>("PieceImages/" + spriteName);
@@ -207,7 +226,8 @@ public class UIManager : MonoBehaviour
             if (btnImage != null && pieceSprite != null)
             {
                 btnImage.sprite = pieceSprite;
-                btnImage.color = new Color(0.4f, 0.6f, 1f); // 味方色（青系）
+                btnImage.color = new Color(0.4f, 0.6f, 1f);
+                btnImage.preserveAspect = true; // アスペクト比を維持
             }
 
             // テキストで個数を表示
@@ -215,6 +235,7 @@ public class UIManager : MonoBehaviour
             if (btnText != null)
             {
                 btnText.text = count > 1 ? $"x{count}" : "";
+                btnText.fontSize = 20;
             }
 
             btn.onClick.AddListener(() =>
@@ -271,8 +292,8 @@ public class UIManager : MonoBehaviour
         // アナウンステキスト
         if (evolutionAnnouncementText != null)
         {
-            string killText = kills > 0 ? $"\n{kills}体の敵を吹き飛ばした！" : "";
-            evolutionAnnouncementText.text = $"進 化 ！\n{oldName} → {newName}{killText}";
+            string killText = kills > 0 ? $"\n{kills} KILLS!" : "";
+            evolutionAnnouncementText.text = $"EVOLUTION!\n{oldName} >> {newName}{killText}";
             evolutionAnnouncementText.gameObject.SetActive(true);
         }
 
