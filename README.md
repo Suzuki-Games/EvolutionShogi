@@ -15,4 +15,4 @@ Unity (C#) で開発したターン制ストラテジーゲーム。
 ## Tech Stack
 
 - Unity 6.3 / C#
-- 17 scripts / 7x7 board
+- 14 scripts / 7x7 board
