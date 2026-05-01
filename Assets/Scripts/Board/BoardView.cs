@@ -55,7 +55,7 @@ public class BoardView : MonoBehaviour
     }
 
     /// <summary>
-    /// すべてのハイライトをリセットする
+    /// 移動先ハイライトのみをリセットする（脅威プレビューは維持）。
     /// </summary>
     public void ClearAllHighlights()
     {
@@ -69,7 +69,7 @@ public class BoardView : MonoBehaviour
     }
 
     /// <summary>
-    /// 指定された座標リストにハイライトを適用する
+    /// 指定された座標リストに移動先ハイライトを適用する
     /// </summary>
     public void HighlightMoves(List<Vector2Int> moves)
     {
@@ -84,6 +84,33 @@ public class BoardView : MonoBehaviour
                 bool isAttack = (targetPiece != null && targetPiece.IsEnemy);
 
                 tiles[move.x, move.y].SetHighlight(isAttack);
+            }
+        }
+    }
+
+    /// <summary>
+    /// 敵駒の攻撃範囲（脅威）を盤面に表示する。
+    /// プレイヤーターン開始時に呼ばれ、「ここに動いたら取られる」をオレンジで可視化する。
+    /// 選択ハイライトとは独立して維持され、駒選択中はそちらが優先表示される。
+    /// </summary>
+    public void HighlightThreats(List<Vector2Int> threats)
+    {
+        // まず全マスの脅威フラグをリセット
+        for (int x = 0; x < BoardGrid.Width; x++)
+        {
+            for (int y = 0; y < BoardGrid.Height; y++)
+            {
+                if (tiles[x, y] != null) tiles[x, y].SetThreat(false);
+            }
+        }
+
+        if (threats == null) return;
+
+        foreach (var pos in threats)
+        {
+            if (BoardGrid.IsInsideBoard(pos))
+            {
+                tiles[pos.x, pos.y].SetThreat(true);
             }
         }
     }

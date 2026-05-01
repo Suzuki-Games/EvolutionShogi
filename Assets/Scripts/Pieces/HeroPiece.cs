@@ -108,13 +108,14 @@ public class HeroPiece : Piece
     }
 
     /// <summary>
-    /// 主人公が取られた時の特別ルール（リスポーン待機状態へ）
+    /// 主人公が取られた時の特別ルール（リスポーン待機状態へ）。
+    /// 撃破演出（拡大＋回転＋フェード）は基底の OnTaken に任せる。
     /// </summary>
     public override void OnTaken()
     {
         IsDead = true;
         RespawnTurnsLeft = 3;
-        gameObject.SetActive(false);
+        base.OnTaken();
     }
 
     /// <summary>
@@ -169,6 +170,10 @@ public class HeroPiece : Piece
         {
             boardGrid.PlacePiece(this, spawnPos);
             gameObject.SetActive(true);
+
+            // OnTakenで無効化したColliderを復活させる（再選択可能にするため必須）
+            Collider2D col = GetComponent<Collider2D>();
+            if (col != null) col.enabled = true;
 
             if (boardView != null)
             {

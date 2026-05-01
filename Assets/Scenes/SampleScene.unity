@@ -805,7 +805,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -251, y: 184}
+  m_AnchoredPosition: {x: -254.5, y: 205}
   m_SizeDelta: {x: 200, y: 50}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!1 &519420028
@@ -1106,6 +1106,7 @@ MonoBehaviour:
   boardView: {fileID: 552628538}
   enemyPawnPrefab: {fileID: 4505600493097476016, guid: cb8d66b9b31c40545aa44f61798d04fa, type: 3}
   enemyGoldPrefab: {fileID: 1571982220223909294, guid: 5836966e176206645a7c949520b2c8a6, type: 3}
+  actionsPerTurn: 2
 --- !u!114 &552628542
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1591,7 +1592,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -256, y: -148}
+  m_AnchoredPosition: {x: -254.5, y: -210.3}
   m_SizeDelta: {x: 200, y: 50}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &922641149
@@ -1947,6 +1948,9 @@ MonoBehaviour:
   handButtonPrefab: {fileID: 693559897}
   playerInput: {fileID: 552628537}
   evolutionAnnouncementText: {fileID: 1138634223}
+  gameFont: {fileID: 0}
+  gameFontTTF: {fileID: 12800000, guid: 4beb055f07aaff244873dec698d0363e, type: 3}
+  japaneseFallbackFont: {fileID: 0}
 --- !u!4 &1473588822
 Transform:
   m_ObjectHideFlags: 0
@@ -2574,7 +2578,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 284, y: 188}
+  m_AnchoredPosition: {x: 227, y: 214.5}
   m_SizeDelta: {x: 200, y: 50}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &2090990935

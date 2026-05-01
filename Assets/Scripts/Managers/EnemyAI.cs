@@ -4,7 +4,8 @@ using UnityEngine;
 
 /// <summary>
 /// 敵駒の思考ルーチンを管理します。
-/// 方針：1手先で駒を取れるなら取る、無ければランダムに動く軽量AI。
+/// 1ターンに最大2回行動し、各行動で全敵駒の全手をスコア評価して最善手を選ぶ。
+/// 評価軸：攻撃価値・勇者からの距離・前進度・自陣リスク。
 /// </summary>
 public class EnemyAI : MonoBehaviour
 {
@@ -15,128 +16,184 @@ public class EnemyAI : MonoBehaviour
     [SerializeField] private EnemyPiece enemyPawnPrefab;
     [SerializeField] private EnemyPiece enemyGoldPrefab;
 
+    [Header("AI Settings")]
+    [Tooltip("敵が1ターンに行動できる最大回数")]
+    [SerializeField] private int actionsPerTurn = 2;
+
+    // ターン中の盤面評価用キャッシュ（勇者の位置と進化状態）
+    private Vector2Int? cachedHeroPos;
+    private bool cachedHeroEvolved;
+
     /// <summary>
-    /// AIのターン処理を実行します。
-    /// 現在盤面にいる全敵駒の中から1匹を選んで行動させる想定（テスト用簡易実装）。
-    /// 実際のゲーム性に合わせて「全敵が1歩ずつ動く」か「1ターンに1匹だけ動く」か調整可能です。
-    /// ここでは「全敵駒の中から行動可能なものを1つ選び、最適な手を指す」形式とします。
+    /// AIのターン処理。最大 actionsPerTurn 回まで連続行動する。
+    /// 1回目: 最善の通常移動 vs 持ち駒打ちの比較。
+    /// 2回目以降: 通常移動のみ（連続打ち込みは強すぎるため）。
     /// </summary>
     public IEnumerator ExecuteTurn(List<EnemyPiece> enemies, System.Action onTurnFinished)
     {
-        yield return new WaitForSeconds(0.5f); // 思考時間演出
+        yield return new WaitForSeconds(0.4f);
 
-        EnemyPiece bestPiece = null;
-        Vector2Int bestMove = Vector2Int.zero;
-        int bestScore = int.MinValue;
+        HashSet<EnemyPiece> alreadyMoved = new HashSet<EnemyPiece>();
+        TurnManager tm = FindAnyObjectByType<TurnManager>();
 
-        // 全敵駒の全手を評価し、最もスコアの高い手を選ぶ
-        foreach (var enemy in enemies)
+        for (int actionIndex = 0; actionIndex < actionsPerTurn; actionIndex++)
         {
-            if (!enemy.gameObject.activeSelf) continue;
+            // ゲームが終了していればこれ以上動かない（王を取った直後など）
+            if (tm != null && tm.CurrentState == GameState.GameOver) break;
 
-            var moves = enemy.GetAvailableMoves(boardGrid.GetGrid());
-            foreach (var move in moves)
+            // ターンの各行動前に勇者キャッシュを更新（勇者が取られた・進化したケースに対応）
+            RefreshHeroCache();
+
+            // --- 通常移動の最善手を探す ---
+            EnemyPiece bestPiece = null;
+            Vector2Int bestMove = Vector2Int.zero;
+            int bestScore = int.MinValue;
+
+            foreach (var enemy in enemies)
             {
-                int score = EvaluateMove(enemy, move);
-                // 同スコアならランダムに入れ替え（単調な動きを防ぐ）
-                if (score > bestScore || (score == bestScore && Random.value > 0.5f))
+                if (!enemy.gameObject.activeSelf) continue;
+                if (alreadyMoved.Contains(enemy)) continue; // 同じ駒は1ターンに1回まで
+
+                var moves = enemy.GetAvailableMoves(boardGrid.GetGrid());
+                foreach (var move in moves)
                 {
-                    bestScore = score;
-                    bestPiece = enemy;
-                    bestMove = move;
-                }
-            }
-        }
-
-        // 持ち駒の打ち込みも候補に入れる
-        Vector2Int dropPos = Vector2Int.zero;
-        PieceType dropType = PieceType.Pawn;
-        int dropScore = int.MinValue;
-        bool shouldDrop = false;
-
-        if (HandManager.Instance != null && HandManager.Instance.EnemyHand.Count > 0)
-        {
-            // 持ち駒ごとに最適な打ち場所を評価
-            HashSet<PieceType> checkedTypes = new HashSet<PieceType>();
-            foreach (var handPiece in HandManager.Instance.EnemyHand)
-            {
-                if (checkedTypes.Contains(handPiece)) continue;
-                checkedTypes.Add(handPiece);
-
-                var validDrops = GetEnemyDropPositions(handPiece);
-                foreach (var pos in validDrops)
-                {
-                    int score = EvaluateDrop(handPiece, pos);
-                    if (score > dropScore)
+                    // ── 単ターン即詰み防止 ──
+                    // 2手目以降では王を取る手を禁止する。これがないと「1手目で詰みの形を作り
+                    // 2手目で王を取る」コンボが防御不能になる（持ち駒打ち→翌アクションで王捕獲など）。
+                    // この規則によりプレイヤーは必ず1ターンの応手機会を得られる。
+                    if (actionIndex >= 1)
                     {
-                        dropScore = score;
-                        dropPos = pos;
-                        dropType = handPiece;
+                        Piece target = boardGrid.GetPieceAt(move);
+                        if (target is KingPiece && !target.IsEnemy) continue;
+                    }
+
+                    int score = EvaluateMove(enemy, move);
+                    if (score > bestScore || (score == bestScore && Random.value > 0.5f))
+                    {
+                        bestScore = score;
+                        bestPiece = enemy;
+                        bestMove = move;
                     }
                 }
             }
-            shouldDrop = dropScore > bestScore;
-        }
 
-        // 持ち駒を打つ方が良い場合
-        if (shouldDrop)
-        {
-            Debug.Log($"[EnemyAI] 持ち駒 {dropType} を {dropPos} に打ちます。");
-            HandManager.Instance.UseFromHand(dropType, true);
+            // --- 持ち駒打ちは1回目の行動でのみ評価（連続打ち抑止）---
+            bool shouldDrop = false;
+            Vector2Int dropPos = Vector2Int.zero;
+            PieceType dropType = PieceType.Pawn;
 
-            EnemyPiece prefab = GetEnemyPrefabForType(dropType);
-            if (prefab != null)
+            if (actionIndex == 0 && HandManager.Instance != null && HandManager.Instance.EnemyHand.Count > 0)
             {
-                EnemyPiece newPiece = Instantiate(prefab);
-                newPiece.Initialize(dropType, true, dropPos);
-                boardGrid.PlacePiece(newPiece, dropPos);
+                int dropScore = int.MinValue;
+                HashSet<PieceType> checkedTypes = new HashSet<PieceType>();
+                foreach (var handPiece in HandManager.Instance.EnemyHand)
+                {
+                    if (checkedTypes.Contains(handPiece)) continue;
+                    checkedTypes.Add(handPiece);
 
-                TurnManager tm = FindAnyObjectByType<TurnManager>();
-                if (tm != null) tm.RegisterEnemy(newPiece);
+                    var validDrops = GetEnemyDropPositions(handPiece);
+                    foreach (var pos in validDrops)
+                    {
+                        int score = EvaluateDrop(handPiece, pos);
+                        if (score > dropScore)
+                        {
+                            dropScore = score;
+                            dropPos = pos;
+                            dropType = handPiece;
+                        }
+                    }
+                }
+                shouldDrop = dropScore > bestScore;
+            }
+
+            // --- 行動の実行 ---
+            if (shouldDrop)
+            {
+                Debug.Log($"[EnemyAI] 持ち駒 {dropType} を {dropPos} に打ちます。");
+                HandManager.Instance.UseFromHand(dropType, true);
+
+                EnemyPiece prefab = GetEnemyPrefabForType(dropType);
+                if (prefab != null)
+                {
+                    EnemyPiece newPiece = Instantiate(prefab);
+                    newPiece.Initialize(dropType, true, dropPos);
+                    boardGrid.PlacePiece(newPiece, dropPos);
+
+                    if (tm != null) tm.RegisterEnemy(newPiece);
+
+                    if (boardView != null)
+                    {
+                        newPiece.transform.position = boardView.GetWorldPositionFromGrid(dropPos);
+                        newPiece.transform.SetParent(boardView.transform);
+                    }
+
+                    if (AudioManager.Instance != null) AudioManager.Instance.PlayMove();
+                }
+            }
+            else if (bestPiece != null)
+            {
+                bool isAttack = boardGrid.GetPieceAt(bestMove) != null;
+                Debug.Log($"[EnemyAI] [{actionIndex + 1}/{actionsPerTurn}] {bestPiece.Type} が {bestMove} へ移動します。 (Attack: {isAttack})");
+
+                boardGrid.MovePiece(bestPiece, bestMove);
+                alreadyMoved.Add(bestPiece);
 
                 if (boardView != null)
                 {
-                    newPiece.transform.position = boardView.GetWorldPositionFromGrid(dropPos);
-                    newPiece.transform.SetParent(boardView.transform);
+                    Vector3 worldTargetPos = boardView.GetWorldPositionFromGrid(bestMove);
+                    if (PieceMover.Instance != null)
+                    {
+                        bool animDone = false;
+                        PieceMover.Instance.AnimateMove(bestPiece.transform, worldTargetPos, () => animDone = true);
+                        yield return new WaitUntil(() => animDone);
+                    }
+                    else
+                    {
+                        bestPiece.transform.position = worldTargetPos;
+                    }
                 }
-
-                if (AudioManager.Instance != null) AudioManager.Instance.PlayMove();
             }
-        }
-        // 通常の移動処理
-        else if (bestPiece != null)
-        {
-            bool isAttack = boardGrid.GetPieceAt(bestMove) != null;
-            Debug.Log($"[EnemyAI] {bestPiece.Type} が {bestMove} へ移動します。 (Attack: {isAttack})");
-
-            boardGrid.MovePiece(bestPiece, bestMove);
-
-            if (boardView != null)
+            else
             {
-                Vector3 worldTargetPos = boardView.GetWorldPositionFromGrid(bestMove);
-                if (PieceMover.Instance != null)
-                {
-                    bool animDone = false;
-                    PieceMover.Instance.AnimateMove(bestPiece.transform, worldTargetPos, () => animDone = true);
-                    yield return new WaitUntil(() => animDone);
-                }
-                else
-                {
-                    bestPiece.transform.position = worldTargetPos;
-                }
+                Debug.Log("[EnemyAI] 動かせる駒がありません。残りの行動をスキップします。");
+                break;
             }
-        }
-        else
-        {
-            Debug.Log("[EnemyAI] 動かせる駒がありませんでした。パスします。");
+
+            // 次の行動までの間隔
+            yield return new WaitForSeconds(0.25f);
         }
 
-        yield return new WaitForSeconds(0.3f);
+        yield return new WaitForSeconds(0.2f);
         onTurnFinished?.Invoke();
     }
 
     /// <summary>
+    /// 盤面をスキャンして勇者の位置と進化状態をキャッシュする。
+    /// EvaluateMoveで毎回スキャンすると O(N*49) になるためターン開始時にまとめて取得。
+    /// </summary>
+    private void RefreshHeroCache()
+    {
+        cachedHeroPos = null;
+        cachedHeroEvolved = false;
+
+        Piece[,] grid = boardGrid.GetGrid();
+        for (int x = 0; x < BoardGrid.Width; x++)
+        {
+            for (int y = 0; y < BoardGrid.Height; y++)
+            {
+                if (grid[x, y] is HeroPiece hero && !hero.IsEnemy && !hero.IsDead)
+                {
+                    cachedHeroPos = new Vector2Int(x, y);
+                    cachedHeroEvolved = (hero.Type != PieceType.Pawn);
+                    return;
+                }
+            }
+        }
+    }
+
+    /// <summary>
     /// 手のスコアを評価する。高いほど良い手。
+    /// 評価軸：攻撃価値（取れる駒）／勇者からの距離／前進度／自陣リスク。
     /// </summary>
     private int EvaluateMove(EnemyPiece enemy, Vector2Int move)
     {
@@ -167,9 +224,16 @@ public class EnemyAI : MonoBehaviour
                     score -= 50; // 駒取りでもリスクは考慮
             }
 
-            // 飛車・角は自陣に留まるほうがスコアが高い（序盤の守り）
+            // 自陣（y<=3）侵入の扱いは勇者の進化状態で反転する。
+            // 序盤（勇者=歩）は守り重視で篭る。勇者が銀以上に進化したら攻撃モードに切り替え、
+            // 飛車・角を前線へ送り出してプレッシャーを掛ける。
             if (move.y <= 3)
-                score -= 100; // 敵陣（y<=3）への深入りを抑制
+            {
+                if (cachedHeroEvolved)
+                    score += 30;  // 攻撃モード：前進を後押し
+                else
+                    score -= 100; // 守りモード：序盤は自陣維持
+            }
         }
 
         // --- 位置評価 ---
@@ -180,10 +244,21 @@ public class EnemyAI : MonoBehaviour
             if (advance > 0) score += advance * 10;
         }
 
-        // 中央寄りボーナス
-        int centerX = BoardGrid.Width / 2;
-        int distFromCenter = Mathf.Abs(move.x - centerX);
-        score += (3 - distFromCenter);
+        // 勇者狙いボーナス：勇者からのチェビシェフ距離が近いほど高スコア。
+        // 旧「中央寄りボーナス（最大3）」では端の駒が永遠に動かなかったため、
+        // 勇者を中心にした包囲評価へ置き換える（最大32点で前進ボーナスと釣り合う規模）。
+        if (cachedHeroPos.HasValue)
+        {
+            Vector2Int hp = cachedHeroPos.Value;
+            int dist = Mathf.Max(Mathf.Abs(move.x - hp.x), Mathf.Abs(move.y - hp.y));
+            score += Mathf.Max(0, 8 - dist) * 4;
+        }
+        else
+        {
+            // 勇者がリスポーン待機中などで盤面にいない場合は中央寄りボーナスにフォールバック
+            int centerX = BoardGrid.Width / 2;
+            score += (3 - Mathf.Abs(move.x - centerX));
+        }
 
         return score;
     }

@@ -71,10 +71,45 @@ public class TurnManager : MonoBehaviour
             heroPiece.DecrementRespawnTurn(boardGrid, boardView);
         }
 
+        // 脅威プレビュー：敵駒の攻撃範囲をオレンジで盤面に可視化する
+        UpdateThreatHighlights();
+
         if (uiManager != null) uiManager.OnNewPlayerTurn();
         OnPlayerTurnStarted?.Invoke();
-        
+
         // （本来ならここでUIでの入力を待ちます）
+    }
+
+    /// <summary>
+    /// 全敵駒の攻撃可能マスを集計し、BoardViewに脅威ハイライトを反映する。
+    /// 多重移動・打ち込み導入後、プレイヤーが「次のターン何が危ないか」を把握する手段がなく
+    /// 即詰みされる感覚があったため、攻撃範囲を常に可視化して計画的なプレイを可能にする。
+    /// </summary>
+    private void UpdateThreatHighlights()
+    {
+        if (boardView == null || boardGrid == null) return;
+
+        HashSet<Vector2Int> threats = new HashSet<Vector2Int>();
+        Piece[,] grid = boardGrid.GetGrid();
+
+        foreach (var enemy in enemyPieces)
+        {
+            if (enemy == null || !enemy.gameObject.activeSelf) continue;
+            foreach (var move in enemy.GetAvailableMoves(grid))
+            {
+                threats.Add(move);
+            }
+        }
+
+        boardView.HighlightThreats(new List<Vector2Int>(threats));
+    }
+
+    /// <summary>
+    /// 敵ターン開始時には脅威ハイライトをクリアして盤面をスッキリさせる。
+    /// </summary>
+    private void ClearThreatHighlights()
+    {
+        if (boardView != null) boardView.HighlightThreats(null);
     }
 
     /// <summary>
@@ -83,6 +118,7 @@ public class TurnManager : MonoBehaviour
     private void HandleEnemyTurnStart()
     {
         Debug.Log("--- 敵のターン ---");
+        ClearThreatHighlights();
         OnEnemyTurnStarted?.Invoke();
 
         if (enemyAI != null && enemyPieces.Count > 0)
