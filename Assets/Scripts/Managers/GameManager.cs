@@ -122,11 +122,12 @@ public class GameManager : MonoBehaviour
         SpawnPiece(enemyGoldPrefab, PieceType.Gold, true, new Vector2Int(5, 6));     // 金
         SpawnPiece(enemyPawnPrefab, PieceType.Pawn, true, new Vector2Int(6, 6));     // 歩（右端）
 
-        // y=5: 第2防衛ライン（歩の壁 — 全幅）
-        for (int x = 0; x < BoardGrid.Width; x++)
-        {
-            SpawnPiece(enemyPawnPrefab, PieceType.Pawn, true, new Vector2Int(x, 5));
-        }
+        // y=5: 第2防衛ライン（歩の壁 — 飛車・角の射線を確保するため中央3列(x=2,3,4)は空ける）
+        // 全幅塞ぐと飛車(2,6)・角(4,6)が完全ロックされ、ゲーム上の役割を失うため。
+        SpawnPiece(enemyPawnPrefab, PieceType.Pawn, true, new Vector2Int(0, 5));
+        SpawnPiece(enemyPawnPrefab, PieceType.Pawn, true, new Vector2Int(1, 5));
+        SpawnPiece(enemyPawnPrefab, PieceType.Pawn, true, new Vector2Int(5, 5));
+        SpawnPiece(enemyPawnPrefab, PieceType.Pawn, true, new Vector2Int(6, 5));
 
         // y=4: 前線部隊（歩×3 — 中央を前に押し出す）
         SpawnPiece(enemyPawnPrefab, PieceType.Pawn, true, new Vector2Int(2, 4));

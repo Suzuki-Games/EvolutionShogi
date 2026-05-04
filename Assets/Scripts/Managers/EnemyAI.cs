@@ -24,6 +24,11 @@ public class EnemyAI : MonoBehaviour
     private Vector2Int? cachedHeroPos;
     private bool cachedHeroEvolved;
 
+    // 脅威マップ：プレイヤーの攻撃が届いている自軍重要駒の位置 → その駒の救出価値（高いほど守りたい）
+    private readonly Dictionary<Vector2Int, int> threatenedAllyValue = new Dictionary<Vector2Int, int>();
+    // 脅威マップ：自軍重要駒を狙っているプレイヤー駒の位置 → 取り返し時の防衛価値（同上）
+    private readonly Dictionary<Vector2Int, int> playerAttackerValue = new Dictionary<Vector2Int, int>();
+
     /// <summary>
     /// AIのターン処理。最大 actionsPerTurn 回まで連続行動する。
     /// 1回目: 最善の通常移動 vs 持ち駒打ちの比較。
@@ -33,7 +38,20 @@ public class EnemyAI : MonoBehaviour
     {
         yield return new WaitForSeconds(0.4f);
 
-        HashSet<EnemyPiece> alreadyMoved = new HashSet<EnemyPiece>();
+        // KingPiece は EnemyPiece を継承していないため TurnManager の enemies リストに含まれない。
+        // ここで盤面から敵の王を拾って AI の行動対象に加えることで、王手回避の自力移動を可能にする。
+        List<Piece> movableEnemies = new List<Piece>(enemies);
+        Piece[,] startGrid = boardGrid.GetGrid();
+        for (int x = 0; x < BoardGrid.Width; x++)
+        {
+            for (int y = 0; y < BoardGrid.Height; y++)
+            {
+                if (startGrid[x, y] is KingPiece king && king.IsEnemy)
+                    movableEnemies.Add(king);
+            }
+        }
+
+        HashSet<Piece> alreadyMoved = new HashSet<Piece>();
         TurnManager tm = FindAnyObjectByType<TurnManager>();
 
         for (int actionIndex = 0; actionIndex < actionsPerTurn; actionIndex++)
@@ -43,13 +61,15 @@ public class EnemyAI : MonoBehaviour
 
             // ターンの各行動前に勇者キャッシュを更新（勇者が取られた・進化したケースに対応）
             RefreshHeroCache();
+            // 脅威マップも各行動前に更新する。1手目で攻撃元を取った場合、2手目では脅威が消えている等を反映するため。
+            RefreshThreatMap(enemies);
 
             // --- 通常移動の最善手を探す ---
-            EnemyPiece bestPiece = null;
+            Piece bestPiece = null;
             Vector2Int bestMove = Vector2Int.zero;
             int bestScore = int.MinValue;
 
-            foreach (var enemy in enemies)
+            foreach (var enemy in movableEnemies)
             {
                 if (!enemy.gameObject.activeSelf) continue;
                 if (alreadyMoved.Contains(enemy)) continue; // 同じ駒は1ターンに1回まで
@@ -192,10 +212,63 @@ public class EnemyAI : MonoBehaviour
     }
 
     /// <summary>
-    /// 手のスコアを評価する。高いほど良い手。
-    /// 評価軸：攻撃価値（取れる駒）／勇者からの距離／前進度／自陣リスク。
+    /// 自軍重要駒（敵の王・飛・角・金・銀）の位置と、それを狙っているプレイヤー駒の位置を集計する。
+    /// 王手や高価値駒の取られ予告を「脅威マップ」として保持し、EvaluateMoveの防御ボーナスで使う。
     /// </summary>
-    private int EvaluateMove(EnemyPiece enemy, Vector2Int move)
+    private void RefreshThreatMap(List<EnemyPiece> enemies)
+    {
+        threatenedAllyValue.Clear();
+        playerAttackerValue.Clear();
+
+        Piece[,] grid = boardGrid.GetGrid();
+
+        // (1) 守りたい自軍駒のリストを作る。価値はEvaluateMoveの攻撃評価と概ね対称にする。
+        List<(Vector2Int pos, int rescue)> importantAllies = new List<(Vector2Int, int)>();
+        for (int x = 0; x < BoardGrid.Width; x++)
+        {
+            for (int y = 0; y < BoardGrid.Height; y++)
+            {
+                Piece p = grid[x, y];
+                if (p == null || !p.IsEnemy) continue;
+                if (p is KingPiece) importantAllies.Add((new Vector2Int(x, y), 10000));
+                else if (p.Type == PieceType.Rook || p.Type == PieceType.Bishop)
+                    importantAllies.Add((new Vector2Int(x, y), 500));
+                else if (p.Type == PieceType.Gold || p.Type == PieceType.Silver)
+                    importantAllies.Add((new Vector2Int(x, y), 200));
+            }
+        }
+
+        // (2) プレイヤー駒の攻撃可能マスを走査して、重要駒を狙っているものを記録する。
+        for (int x = 0; x < BoardGrid.Width; x++)
+        {
+            for (int y = 0; y < BoardGrid.Height; y++)
+            {
+                Piece p = grid[x, y];
+                if (p == null || p.IsEnemy) continue;
+
+                List<Vector2Int> moves = p.GetAvailableMoves(grid);
+                Vector2Int attackerPos = new Vector2Int(x, y);
+
+                foreach (var (alliedPos, rescue) in importantAllies)
+                {
+                    if (!moves.Contains(alliedPos)) continue;
+
+                    // 同じ駒に複数の脅威がある場合は最大値を採用（最も価値の高い守り対象を優先）
+                    if (!threatenedAllyValue.TryGetValue(alliedPos, out int curAlly) || curAlly < rescue)
+                        threatenedAllyValue[alliedPos] = rescue;
+                    if (!playerAttackerValue.TryGetValue(attackerPos, out int curAttacker) || curAttacker < rescue)
+                        playerAttackerValue[attackerPos] = rescue;
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// 手のスコアを評価する。高いほど良い手。
+    /// 評価軸：攻撃価値（取れる駒）／防御価値（救出・取り返し）／勇者からの距離／前進度／自陣リスク。
+    /// 引数を Piece 型にしているのは、KingPiece（EnemyPiece非継承）も AI の行動主体に含めるため。
+    /// </summary>
+    private int EvaluateMove(Piece enemy, Vector2Int move)
     {
         int score = 0;
         Piece target = boardGrid.GetPieceAt(move);
@@ -209,6 +282,30 @@ public class EnemyAI : MonoBehaviour
                 score += 500;   // 勇者を倒すと相手の成長を止める
             else
                 score += target.ExpValue * 100;
+        }
+
+        // --- 防御評価 ---
+        // (a) この駒自身が脅威下にある場合、安全マスへ逃げる手にボーナス。
+        //     IsThreatenedByPlayer は「この移動先がプレイヤーの攻撃範囲にあるか」を見るので、
+        //     逃げ込み先が再び攻撃範囲だと加点しない（無意味な移動を避ける）。
+        if (threatenedAllyValue.TryGetValue(enemy.Position, out int selfRescue))
+        {
+            if (!IsThreatenedByPlayer(move))
+                score += selfRescue; // 安全に逃げ切れる手は最大限評価
+        }
+
+        // (b) 自軍重要駒を狙っている攻撃元を取れる手にボーナス。
+        //     脅威の根を断つので、王手解除や高価値駒の救出に直結する。
+        if (target != null && !target.IsEnemy && playerAttackerValue.TryGetValue(move, out int attackerRescue))
+        {
+            score += attackerRescue;
+        }
+
+        // (c) 王の安全評価。被弾即敗北のため、自ら危険マスへ歩み入る手は強く却下する。
+        //     脅威下からの脱出は (a) のselfRescue=10000で勝るので、自然と安全マスを選ぶ。
+        if (enemy is KingPiece && IsThreatenedByPlayer(move))
+        {
+            score -= 5000;
         }
 
         // --- リスク評価（高価値駒の無謀な突撃を防ぐ） ---
