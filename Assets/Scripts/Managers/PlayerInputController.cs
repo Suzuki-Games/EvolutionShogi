@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 /// <summary>
 /// プレイヤーのマウス入力（タップ入力）を受け取り、
@@ -39,21 +40,31 @@ public class PlayerInputController : MonoBehaviour
         if (turnManager == null || turnManager.CurrentState != GameState.PlayerTurn)
             return;
 
-        if (Input.GetMouseButtonDown(0))
+        // 進化先選択モーダル表示中は盤面クリックを受け付けない（裏側で別の駒を動かされないように）
+        if (turnManager.IsHeroEvolutionPending())
+            return;
+
+        // 旧 Input Manager の Input.GetMouseButtonDown / Input.mousePosition は Unity 6 で
+        // 非推奨警告が出るため、新 Input System の Mouse.current 経由に置き換えている。
+        // Mouse.current が null になり得る環境（マウス未接続）に備えて毎回ガードする。
+        Mouse mouse = Mouse.current;
+        if (mouse == null) return;
+
+        if (mouse.leftButton.wasPressedThisFrame)
         {
-            HandleClick();
+            HandleClick(mouse.position.ReadValue());
         }
 
         // 右クリックで選択解除
-        if (Input.GetMouseButtonDown(1))
+        if (mouse.rightButton.wasPressedThisFrame)
         {
             CancelSelection();
         }
     }
 
-    private void HandleClick()
+    private void HandleClick(Vector2 screenPos)
     {
-        Vector2 mousePos = mainCamera.ScreenToWorldPoint(Input.mousePosition);
+        Vector2 mousePos = mainCamera.ScreenToWorldPoint(screenPos);
         RaycastHit2D hit = Physics2D.Raycast(mousePos, Vector2.zero);
 
         if (hit.collider != null)
@@ -266,19 +277,32 @@ public class PlayerInputController : MonoBehaviour
             {
                 PieceMover.Instance.AnimateMove(movingPiece.transform, worldTargetPos, () =>
                 {
-                    turnManager.EndPlayerTurn();
+                    StartCoroutine(EndPlayerTurnAfterEvolutionResolved());
                 });
             }
             else
             {
                 movingPiece.transform.position = worldTargetPos;
-                turnManager.EndPlayerTurn();
+                StartCoroutine(EndPlayerTurnAfterEvolutionResolved());
             }
         }
         else
         {
             CancelSelection();
         }
+    }
+
+    /// <summary>
+    /// 進化選択モーダルが開いていればプレイヤーの選択完了を待ってからターンを終える。
+    /// 多段進化（例：歩→金→飛車を1手で達成）した場合も連続するモーダル全てが閉じるまで待機する。
+    /// </summary>
+    private IEnumerator EndPlayerTurnAfterEvolutionResolved()
+    {
+        while (turnManager.IsHeroEvolutionPending())
+        {
+            yield return null;
+        }
+        turnManager.EndPlayerTurn();
     }
 
     private void CancelSelection()

@@ -95,9 +95,19 @@ public class GameManager : MonoBehaviour
         if (uiManager != null)
         {
             uiManager.TrackHero(hero);
+
+            // 進化が確定したら派手な演出を流す
             hero.OnEvolved += (oldType, newType) =>
             {
                 uiManager.ShowEvolutionEffect(oldType, newType);
+            };
+
+            // 進化先が複数提示されたタイミングでモーダルを開かせる。
+            // ローカル変数 `hero` を閉包で捕捉してUIへ渡しているので、
+            // モーダル内のクリックで対象の Hero に直接 ApplyEvolutionChoice できる。
+            hero.OnEvolutionChoiceRequired += (choices) =>
+            {
+                uiManager.ShowEvolutionChoiceModal(hero, choices);
             };
         }
         SpawnPiece(allyPawnPrefab, PieceType.Pawn, false, new Vector2Int(5, 1));     // 歩（右）

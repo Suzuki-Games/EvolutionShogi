@@ -163,6 +163,15 @@ public class TurnManager : MonoBehaviour
         heroPiece = hero;
     }
 
+    /// <summary>
+    /// 勇者が進化先選択モーダルの応答待ちかどうか。
+    /// PlayerInputController と TryMoveTo 完了処理がこれを参照して入力受付/ターン終了を保留する。
+    /// </summary>
+    public bool IsHeroEvolutionPending()
+    {
+        return heroPiece != null && heroPiece.HasPendingEvolution;
+    }
+
     public void RegisterEnemy(EnemyPiece enemy)
     {
         if (!enemyPieces.Contains(enemy))

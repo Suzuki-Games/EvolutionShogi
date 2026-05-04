@@ -19,15 +19,32 @@ public class HeroPiece : Piece
     // 死亡状態かどうかのフラグ
     public bool IsDead = false;
 
-    private const int EXP_TO_SILVER = 2;
-    private const int EXP_TO_ROOK = 5;
-    private const int EXP_TO_HERO = 10;
+    private const int EXP_TO_TIER1 = 2;  // 銀 / 金
+    private const int EXP_TO_TIER2 = 5;  // 飛 / 角
+    private const int EXP_TO_TIER3 = 10; // 勇者（最終形態）
 
     /// <summary>
-    /// 進化発生時に外部から演出処理をフックするためのイベント。
+    /// 進化が発生した瞬間に外部演出（フラッシュ・テキスト）をフックするためのイベント。
     /// (PieceType oldType, PieceType newType)
     /// </summary>
     public event Action<PieceType, PieceType> OnEvolved;
+
+    /// <summary>
+    /// 進化先が複数ある場合、UI側に選択肢を提示してもらうためのイベント。
+    /// 選択肢が1つしかない（最終ティア）場合は発火せず即時 ApplyEvolutionChoice する。
+    /// </summary>
+    public event Action<List<PieceType>> OnEvolutionChoiceRequired;
+
+    /// <summary>
+    /// プレイヤーの進化選択を待っている状態かどうか。
+    /// PlayerInputController はこのフラグが解除されるまで EndPlayerTurn を保留する。
+    /// </summary>
+    public bool HasPendingEvolution { get; private set; }
+
+    /// <summary>
+    /// 現在提示中の進化選択肢。UI側が読み取って各カードに表示する。
+    /// </summary>
+    public List<PieceType> PendingChoices { get; private set; }
 
     /// <summary>
     /// 前進時や駒を取った時に得られる経験値を敵陣に近いほどボーナス付与して処理します。
@@ -47,42 +64,84 @@ public class HeroPiece : Piece
         Debug.Log($"[HeroPiece] 経験値獲得: 基本={baseAmount}, ボーナス={bonusExp}, 合計={totalExp}");
 
         CurrentExp += totalExp;
-        CheckEvolution();
+        CheckEvolutionPending();
     }
 
     /// <summary>
-    /// 経験値に基づいた進化ロジック
+    /// 現在のEXP・現在の形態から「次の進化先候補」を計算し、必要なら選択UIを開かせる。
+    /// 選択肢が複数あるティアでは HasPendingEvolution=true にしてイベント発火、
+    /// 単一の最終ティア（勇者）は自動適用する。
+    /// 多段進化（一気に2ティア跨ぐ）にも対応するため、ApplyEvolutionChoice の最後で再帰的に呼ばれる。
     /// </summary>
-    private void CheckEvolution()
+    private void CheckEvolutionPending()
+    {
+        List<PieceType> choices = ComputeNextEvolutionChoices();
+
+        if (choices == null || choices.Count == 0)
+        {
+            HasPendingEvolution = false;
+            PendingChoices = null;
+            return;
+        }
+
+        // 単一選択肢（最終形態への進化）は迷う必要がないので即時適用
+        if (choices.Count == 1)
+        {
+            ApplyEvolutionChoice(choices[0]);
+            return;
+        }
+
+        // 2択以上：プレイヤーの選択を待つ
+        HasPendingEvolution = true;
+        PendingChoices = choices;
+        OnEvolutionChoiceRequired?.Invoke(choices);
+    }
+
+    /// <summary>
+    /// 現在の Type と CurrentExp から、提示すべき進化先候補を返す。
+    /// 進化ツリー：
+    ///   Pawn      → (2EXP)  Silver | Gold
+    ///   Silver/Gold → (5EXP)  Rook   | Bishop
+    ///   Rook/Bishop → (10EXP) Hero（最終、選択なし）
+    /// </summary>
+    private List<PieceType> ComputeNextEvolutionChoices()
+    {
+        bool isTier0 = (Type == PieceType.Pawn);
+        bool isTier1 = (Type == PieceType.Silver || Type == PieceType.Gold);
+        bool isTier2 = (Type == PieceType.Rook || Type == PieceType.Bishop);
+
+        if (isTier2 && CurrentExp >= EXP_TO_TIER3)
+            return new List<PieceType> { PieceType.Hero };
+        if (isTier1 && CurrentExp >= EXP_TO_TIER2)
+            return new List<PieceType> { PieceType.Rook, PieceType.Bishop };
+        if (isTier0 && CurrentExp >= EXP_TO_TIER1)
+            return new List<PieceType> { PieceType.Silver, PieceType.Gold };
+
+        return null;
+    }
+
+    /// <summary>
+    /// プレイヤーが選択した形態へ実際に進化させる。UIモーダルから呼ばれる。
+    /// 進化後、まだ次のティアに到達していれば再度 CheckEvolutionPending が走り
+    /// 連続選択モーダルを表示する（多段進化対応）。
+    /// </summary>
+    public void ApplyEvolutionChoice(PieceType chosen)
     {
         PieceType oldType = Type;
+        Type = chosen;
+        HasPendingEvolution = false;
+        PendingChoices = null;
 
-        if (CurrentExp >= EXP_TO_HERO)
-        {
-            Type = PieceType.Hero;
-        }
-        else if (CurrentExp >= EXP_TO_ROOK)
-        {
-            Type = PieceType.Rook;
-        }
-        else if (CurrentExp >= EXP_TO_SILVER)
-        {
-            Type = PieceType.Silver;
-        }
+        Debug.Log($"進化選択: {oldType} -> {chosen}");
+        if (AudioManager.Instance != null) AudioManager.Instance.PlayEvolve();
 
-        if (oldType != Type)
-        {
-            Debug.Log($"進化した！ {oldType} -> {Type}");
-            if (AudioManager.Instance != null) AudioManager.Instance.PlayEvolve();
-
-            // 進化スケールアニメーション
-            StartCoroutine(EvolutionScaleAnimation());
-
-            // 外部に進化イベントを通知（UIテキスト演出用）
-            OnEvolved?.Invoke(oldType, Type);
-        }
+        StartCoroutine(EvolutionScaleAnimation());
+        OnEvolved?.Invoke(oldType, chosen);
 
         UpdateVisuals();
+
+        // 多段進化チェック：1回の進化で次ティア閾値も超えていれば、続けて選択肢を提示する
+        CheckEvolutionPending();
     }
 
     /// <summary>
@@ -205,8 +264,14 @@ public class HeroPiece : Piece
             case PieceType.Silver:
                 moves = GetSilverMoves(board);
                 break;
+            case PieceType.Gold:
+                moves = GetGoldMoves(board);
+                break;
             case PieceType.Rook:
                 moves = GetRookMoves(board);
+                break;
+            case PieceType.Bishop:
+                moves = GetBishopMoves(board);
                 break;
             case PieceType.Hero:
                 moves = GetHeroMoves(board);
@@ -247,10 +312,62 @@ public class HeroPiece : Piece
         return moves;
     }
 
+    /// <summary>
+    /// 金の動き：前3マス（前・斜め前左右）＋横2マス＋真後ろ。斜め後ろには行けない。
+    /// 銀と比べて「前進力＋横移動」で守備＋牽制寄りの形態。
+    /// </summary>
+    private List<Vector2Int> GetGoldMoves(Piece[,] board)
+    {
+        List<Vector2Int> moves = new List<Vector2Int>();
+        AddMoveIfValid(board, moves, Position + new Vector2Int(-1, 1));
+        AddMoveIfValid(board, moves, Position + new Vector2Int(0, 1));
+        AddMoveIfValid(board, moves, Position + new Vector2Int(1, 1));
+        AddMoveIfValid(board, moves, Position + new Vector2Int(-1, 0));
+        AddMoveIfValid(board, moves, Position + new Vector2Int(1, 0));
+        AddMoveIfValid(board, moves, Position + new Vector2Int(0, -1));
+        return moves;
+    }
+
     private List<Vector2Int> GetRookMoves(Piece[,] board)
     {
         List<Vector2Int> moves = new List<Vector2Int>();
         Vector2Int[] directions = { new Vector2Int(0, 1), new Vector2Int(0, -1), new Vector2Int(1, 0), new Vector2Int(-1, 0) };
+
+        foreach (var dir in directions)
+        {
+            Vector2Int currentPos = Position + dir;
+            while (BoardGrid.IsInsideBoard(currentPos))
+            {
+                Piece target = board[currentPos.x, currentPos.y];
+                if (target == null)
+                {
+                    moves.Add(currentPos);
+                }
+                else
+                {
+                    if (target.IsEnemy != this.IsEnemy)
+                    {
+                        moves.Add(currentPos);
+                    }
+                    break;
+                }
+                currentPos += dir;
+            }
+        }
+        return moves;
+    }
+
+    /// <summary>
+    /// 角の動き：斜め4方向のスライド。飛車と射程は同等だが軸が違うので
+    /// 盤面斜めに敵駒が並んでいるか、縦横ラインが詰まっている時に強い。
+    /// </summary>
+    private List<Vector2Int> GetBishopMoves(Piece[,] board)
+    {
+        List<Vector2Int> moves = new List<Vector2Int>();
+        Vector2Int[] directions = {
+            new Vector2Int(1, 1), new Vector2Int(1, -1),
+            new Vector2Int(-1, 1), new Vector2Int(-1, -1)
+        };
 
         foreach (var dir in directions)
         {
