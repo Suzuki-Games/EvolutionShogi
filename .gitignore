@@ -31,6 +31,9 @@ Thumbs.db
 genzyou/
 スクリーンショット*.png
 
+# WebGL ビルド出力（公開用は docs/ にコピーする）
+/WebGLBuild/
+
 # 使用しないWindowsシステムフォント
 Assets/YUGOTH*
 
